@@ -1,0 +1,29 @@
+== About UberClock ==
+
+UberClock is a alarm clock that is designed for more advanced sleep.
+
+ • It is a sleep phase clock
+ • It can optimize powernaps and short sleeps
+
+
+== Architecture ==
+
+UberClock contains of different components:
+
+• uberclockd
+  Is a daemon which is usally run to connect to the motition detectors and 
+  provide data via http html/json/xml to the frontend.
+  It can also start programs on events so no support from a already running 
+  frontend (the actual alarm clock) is required as long as it can be 
+  triggered somehow.
+• html frontend. uberclockd has a built in webserver. 
+• frontend (planned)
+  a nice qt frontend, maybe alarm flip clock https://garage.maemo.org/projects/flipclock/
+
+
+
+== Supported Hardware ==
+
+Motition Detectors:
+• TI eZ430-Chronos with the OpenChronos Firmware
+  http://github.com/poelzi/OpenChronos/
