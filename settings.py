@@ -1,4 +1,4 @@
-# Django settings for uberclock_server project.
+# Django settings for uberclock project.
 
 import os.path
 
@@ -77,7 +77,7 @@ MIDDLEWARE_CLASSES = (
     'django.contrib.messages.middleware.MessageMiddleware',
 )
 
-ROOT_URLCONF = 'uberclock_server.urls'
+ROOT_URLCONF = 'uberclock.urls'
 
 TEMPLATE_DIRS = (
     # Put strings here, like "/home/html/django_templates" or "C:/www/django/templates".
@@ -93,7 +93,7 @@ INSTALLED_APPS = (
 #    'django.contrib.messages',
     # Uncomment the next line to enable the admin:
     # 'django.contrib.admin',
-    'uberclock_server.db',
+    'uberclock.db',
 )
 
 CLOCK_HARDWARE = "ezchronos"

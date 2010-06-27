@@ -1,5 +1,5 @@
 from django.db import models
-from uberclock_server.tools import ez_chronos
+from uberclock.tools import ez_chronos
 import struct
 # Create your models here.
 
