@@ -100,13 +100,21 @@ INSTALLED_APPS = (
     'django.contrib.sites',
 #    'django.contrib.messages',
     # Uncomment the next line to enable the admin:
-    # 'django.contrib.admin',
+    'django.contrib.admin',
     'uberclock.db',
+    'uberclock.webclock',
+    'piston',
 )
 
 CLOCK_HARDWARE = "ezchronos"
 
 EZ_SERIAL = "/dev/ttyACM0"
+
+SERVER_LISTEN = '0.0.0.0'
+SERVER_PORT = 8000
+
+CLOCK_SESSION_TIMEOUT = 60*5
+
 
 import os
 
