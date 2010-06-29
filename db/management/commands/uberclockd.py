@@ -40,15 +40,19 @@ class Command(BaseCommand):
             pv.reset()
             pv.start_ap()
             try:
+                logging.info("OpenChronos interface started on %s" %settings.EZ_SERIAL)
                 pv.loop_smpl_get()
             except KeyboardInterrupt:
                 pv.reset()
                 ser.close()
                 sys.exit(0)
             except Exception, e:
-                pv.reset()
-                ser.close()
                 logging.exception(e)
+                # try to cleanup, which may fail
+                try: pv.reset()
+                except: pass
+                try: pv.close()
+                except: pass
 
     def start_webserver(self):
         server = wsgiserver.CherryPyWSGIServer(

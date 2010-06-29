@@ -83,6 +83,10 @@ class Simpliciti(object):
         self.last_cmd = ()
     #def 
 
+    def close(self):
+        self.stream.close()
+        self.stream = None
+
     def send(self, cmd_, data=None):
         ln = 3
         # // Packet bytes

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+
+{% block content %}
+<h3>{{ session.start|date }} - {{ session.stop|date }}</h3>
+<div class="pager">
+{% if prev %}<a href="{% url webclock.views.stats_detail prev.id %}">Previous</a>{% endif %}
+<a href="../">Up</a>
+{% if next %}<a href="{% url webclock.views.stats_detail next.id %}">Next</a>{% endif %}
+</div>
+<br />
+<img src="/stats/png_graph/{{ session.id }}/" />
+{% endblock %}

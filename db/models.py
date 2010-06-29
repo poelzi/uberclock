@@ -48,6 +48,10 @@ class Session(models.Model):
     typ = models.IntegerField("Type", default=0, choices=SESSION_TYPES)
     wakeup = models.DateTimeField("Wakeup", null=True)
 
+    @property
+    def week(self):
+        return self.start.isocalendar()[1]
+
     def __repr__(self):
         return "<Session %s %s-%s>" %(self.user, self.start, self.stop)
 
@@ -101,13 +105,14 @@ class DBWriter(ez_chronos.CommandDispatcher):
             #FIXME add device & user
             self.session[device] = session = Session(start=now, stop=now)
             session.save()
+            logging.debug("start new session: %s" %session.id)
         else:
             session = self.session[device]
         self.last_msg[device] = now
         mdata = self.get_smpl_data(data)
         var = struct.unpack('H', mdata[:2])[0]
         counter = ord(mdata[2])
-        print "%3d %6d %s" %(counter, var, "#"*max(min((var/500), 80),1))
+        logging.debug("%s %3d %6d %s" %(session.id, counter, var, "#"*max(min((var/500), 80),1)))
         entry = Entry(value=var, counter=counter, session=session)
         session.stop = now
         session.save()

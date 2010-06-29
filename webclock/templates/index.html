@@ -1,45 +1,4 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html><head>
-  
-  <meta content="text/html; charset=ISO-8859-1" http-equiv="content-type">
-  <title>UberClock</title>
+{% extends "base.html" %}
 
-  
-  
-  <style type="text/css">
-li.toplink {
-  border: 1px solid #3366ff;
-  margin-top: 10px;
-  height: 1.4em;
-  float: left;
-  width: 8em;
-  background-color: #12245b;
-  text-align: center;
-  list-style-type: none;
-}
-body {
-  background-color: #3333ff;
-}
-a {
-}
-li.toplink a {
-  text-decoration: none;
-  color: white;
-  font-size: 1.2em;
-}
-li.topmenu {
-  border-style: dotted;
-}
 
-  </style>
-</head><body>
-<div>
-<ul class="topmenu">
-<li class="toplink"><a href="/set/">Set</a></li>
-<li class="toplink"><a href="/stats/">Stats</a></li>
-</ul>
-
-<div id="maindiv">
-</div>
-</div>
-</body></html>
+{% block content %}there will be clocks{% endblock %}

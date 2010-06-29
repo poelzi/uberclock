@@ -4,5 +4,8 @@ from . import views
 
 urlpatterns = patterns('',
     (r'^$', views.index),
-    (r'^simple/', views.simple),
+    (r'^stats/png_graph/(?P<session>\d+)/', views.png_graph),
+    (r'^stats/png_graph/', views.png_graph),
+    (r'^stats/(\d+)/', views.stats_detail),
+    (r'^stats/', views.stats),
 )

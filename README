@@ -5,6 +5,12 @@ UberClock is a alarm clock that is designed for more advanced sleep.
  • It is a sleep phase clock
  • It can optimize powernaps and short sleeps
 
+== Requirements ==
+• python 2.5+
+• python-sqlite (or some other django supported db)
+• django 1.2
+• django-piston
+
 
 == Architecture ==
 

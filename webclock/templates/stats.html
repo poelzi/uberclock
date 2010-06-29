@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+
+{% block content %}
+{% for session in sessions %}
+{% if now_week == session.week %}
+    {% ifchanged session.week%}<h3>This week</h3>{% endifchanged %}
+{% else %}
+    {% ifchanged session.week%}<h3>Week {{ session.start|date:"W" }}</h3>{% endifchanged %}
+{% endif %}
+<a href="/stats/{{ session.id }}/">{{ session.start|date:"DATETIME_FORMAT" }} - {{ session.stop|date:"DATETIME_FORMAT" }}</a><br/>
+
+
+{% endfor %}
+
+
+{% endblock %}
