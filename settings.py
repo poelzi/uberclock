@@ -88,6 +88,7 @@ MIDDLEWARE_CLASSES = (
 ROOT_URLCONF = 'uberclock.urls'
 
 TEMPLATE_DIRS = (
+    os.path.join(os.path.dirname(__file__), "templates"),
     # Put strings here, like "/home/html/django_templates" or "C:/www/django/templates".
     # Always use forward slashes, even on Windows.
     # Don't forget to use absolute paths, not relative paths.
@@ -105,6 +106,9 @@ INSTALLED_APPS = (
     'uberclock.webclock',
     'piston',
 )
+
+
+STATIC_DOC_ROOT = os.path.join(os.path.dirname(__file__), "static")
 
 CLOCK_HARDWARE = "ezchronos"
 

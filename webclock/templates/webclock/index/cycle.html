@@ -1,0 +1,21 @@
+{% extends "webclock/index/base_clock.html" %}
+
+webclock_name Cycle Clock
+
+{% block header_extra %}
+<!-- thanks to http://tutorialzine.com/2009/12/colorful-clock-jquery-css/ -->
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7" />
+
+<link rel="stylesheet" type="text/css" href="/static/webclock/cycle/styles.css" />
+<link rel="stylesheet" type="text/css" href="/static/webclock/cycle/jquery.tzineclock/jquery.tzineclock.css" />
+
+<script type="text/javascript" src="/static/webclock/cycle/jquery.tzineclock/jquery.tzineclock.js"></script>
+
+<script type="text/javascript" src="/static/webclock/cycle/script.js"></script>
+{% endblock %}
+
+{% block content %}
+<div id="fancyClock"></div>
+{% endblock %}

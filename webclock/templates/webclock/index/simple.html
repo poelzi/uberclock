@@ -1,0 +1,26 @@
+{% extends "webclock/index/base_clock.html" %}
+
+webclock_name Simple
+
+{% block header %}
+  <script type="text/javascript" src="/static/js/jquery/jquery-1.3.2.min.js"></script>
+  <script type="text/javascript" src="/static/js/jquery.jclock.js"></script>
+
+  <script type="text/javascript">
+    $(function($) {
+      var options = {
+        fontFamily: 'Verdana, Times New Roman',
+        fontSize: '48px',
+        foreground: 'white',
+      }
+
+      $('.jclock').jclock(options);
+    });
+  </script>
+
+{% endblock %}
+
+{% block content %}
+<div class="jclock"></div>
+
+{% endblock %}

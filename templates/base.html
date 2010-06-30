@@ -3,8 +3,6 @@
   
   <meta content="text/html; charset=ISO-8859-1" http-equiv="content-type">
   <title>UberClock{% block title %} - {{ section.title }}{% endblock %}</title>
-
-  
   
   <style type="text/css">
 li.toplink {
@@ -39,16 +37,26 @@ a {
 
 
   </style>
+
+<script type="text/javascript" src="/static/js/jquery/jquery-1.3.2.min.js"></script>
+
+{% block header_base %}{% endblock %}
+{% block  header %}{% endblock %}
+{% block  header_extra %}{% endblock %}
+
 </head><body>
 <div class="top">
 <ul class="topmenu">
 <li class="toplink"><a href="/">Home</a></li>
 <li class="toplink"><a href="/set/">Set</a></li>
 <li class="toplink"><a href="/stats/">Stats</a></li>
+{% block menuextra %}{% endblock %}
 </ul>
 </div>
 <br/><br/>
 <div id="maindiv">
 {% block content %}{% endblock %}
 </div>
-</body></html>
+</body>
+{% block js_footer %}{% endblock %}
+</html>

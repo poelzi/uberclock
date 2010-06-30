@@ -3,16 +3,47 @@
 from django.shortcuts import render_to_response, get_object_or_404
 from django.template import RequestContext
 from django.http import HttpResponse
-import datetime
+import datetime, os, re
 from uberclock.db.models import Entry, Session
 
+INDEX_PATH = os.path.join(os.path.dirname(__file__), 
+                           "templates", "webclock", "index")
+
+def get_clock_types():
+    res = {}
+    for item in os.listdir(INDEX_PATH):
+        # read the content
+        try:
+            content = open(os.path.join(INDEX_PATH, item)).read()
+        except IOError:
+            continue
+        match = re.search("webclock_name (.*)", content)
+        if match:
+            res[os.path.basename(item)] = match.group(1)
+    return res
+
+
 def index(request):
+    types = get_clock_types()
 
-    data = {}
+    typ = request.COOKIES.get("webclock_clock", "simple.html")
 
-    return render_to_response('index.html',
+    typ = request.GET.get("typ", typ)
+    if not typ in types:
+        typ = "simple.html"
+
+    data = {"types": types,
+            "current": typ,
+           }
+
+    ret = render_to_response('webclock/index/%s' %typ,
                               data,
                               context_instance=RequestContext(request))
+
+    if request.COOKIES.get("webclock_clock", "simple.html") != typ:
+        ret.set_cookie("webclock_clock", value=typ)
+
+    return ret
 
 
 def stats(request):
@@ -60,7 +91,6 @@ def stats_detail(request, session):
 # file charts.py
 def png_graph(request, session=None):
     import random
-    print "session", session
     from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
     from matplotlib.figure import Figure
     from matplotlib.dates import DateFormatter

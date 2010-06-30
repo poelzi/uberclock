@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block js_footer %}
+  <script type="text/javascript">
+    $('#clock_type').change(function() {
+      $('#clock_type_form').submit();
+    });
+  </script>
+{% block js_footer_2 %}{% endblock %}
+{% endblock %}
+
+{% block menuextra %}
+<li class="toplink">
+<form id="clock_type_form">
+<select id="clock_type" name="typ">
+{% for typ,name in types.items %}
+<option value="{{typ}}" {%if typ == current%}selected="1"{%endif%}>{{name}}</option>
+{% endfor %}
+</select>
+</form>
+</li>
+{% endblock %}
+
+{% block content %}
+
+huhu
+{% endblock %}

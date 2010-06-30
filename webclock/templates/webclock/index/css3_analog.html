@@ -1,0 +1,159 @@
+{% extends "webclock/index/base_clock.html" %}
+
+webclock_name CSS3 Analog Clock
+
+{% block header_extra %}
+
+<!-- created by Toby Pitman 
+http://development.tobypitman.com/cssclock/clock.php 
+-->
+
+<style type="text/css">
+#wrap {
+	width: 600px;
+	height: 600px;
+	margin: 20px auto 0 auto;
+	position: relative;
+	background: url(/static/webclock/css3_analog/clockface.jpg);
+}
+
+#gmt {
+	font-size: 30px;
+	font-weight: bold;
+	text-align: center;	
+}
+
+#gmt p{
+	font-size: 14px;
+	font-weight: normal;
+	text-align: center;	
+}
+
+#sec {
+	position: absolute;
+	width: 30px;
+	height: 600px;
+	background: url(/static/webclock/css3_analog/sechand.png);
+	top: 0px;
+	left: 285px;
+	z-index: 40;
+   }
+   
+#secshad {
+	position: absolute;
+	width: 30px;
+	height: 600px;
+	background: url(/static/webclock/css3_analog/secshad.png);
+	top: 5px;
+	left: 285px;
+	z-index: 38;
+   }
+   
+#hour {
+	position: absolute;
+	width: 30px;
+	height: 600px;
+	background: url(/static/webclock/css3_analog/hourhand.png);
+	top: 0px;
+	left: 285px;
+	z-index: 35;
+   }
+   
+#hourshad {
+	position: absolute;
+	width: 30px;
+	height: 600px;
+	background: url(/static/webclock/css3_analog/hourshad.png);
+	top: 3px;
+	left: 285px;
+	z-index: 33;
+   }
+  
+   
+#min {
+	position: absolute;
+	width: 30px;
+	height: 600px;
+	background: url(/static/webclock/css3_analog/minhand.png);
+	top: 0px;
+	left: 285px;
+	z-index: 30;
+   }
+   
+#minshad {
+	position: absolute;
+	width: 30px;
+	height: 600px;
+	background: url(/static/webclock/css3_analog/minshad.png);
+	top: 4px;
+	left: 285px;
+	z-index: 28;
+   }
+   
+</style>
+
+<script type="text/javascript">
+
+$(document).ready(function() {
+
+  function secondHand() {
+      setInterval( function() {
+      var d = new Date();
+      var seconds = d.getSeconds();
+      var sdegree = seconds * 6;
+      var srotate = "rotate(" + sdegree + "deg)";
+      
+      $("#sec, #secshad").css("-webkit-transform", srotate );
+          
+      }, 1000 );
+   };
+   
+   function hourHand() {
+      setInterval( function() {
+      var d = new Date();
+      var hours = d.getHours();
+      var mins = d.getMinutes();
+      var hdegree = hours * 30 + Math.round(mins / 2);
+      var hrotate = "rotate(" + hdegree + "deg)";
+      
+      $("#hour, #hourshad").css("-webkit-transform", hrotate );
+          
+      }, 1000 );
+   };
+   
+   function minHand() {
+      setInterval( function() {
+      var d = new Date();
+      var mins = d.getMinutes();
+      var mdegree = mins * 6;
+      var mrotate = "rotate(" + mdegree + "deg)";
+      
+      $("#min, #minshad").css("-webkit-transform", mrotate );
+          
+      }, 1000 );
+   };
+
+
+
+   secondHand(); 
+   hourHand();
+   minHand();  
+}); 
+
+</script>
+
+{% endblock %}
+
+{% block content %}
+<div id="wrap">
+	
+   	<div id="sec"></div>
+   	<div id="secshad"></div>
+   	<div id="hour"></div>
+   	<div id="hourshad"></div>
+
+	<div id="min"></div>
+	<div id="minshad"></div>
+</div>
+{% endblock %}
+
