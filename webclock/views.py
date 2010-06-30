@@ -117,7 +117,7 @@ def png_graph(request, session=None):
             x.append(entry.date)
             y.append(entry.value)
     ax.plot_date(x, y, '-')
-    ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))
+    ax.xaxis.set_major_formatter(DateFormatter('%H:%m'))
     fig.autofmt_xdate()
     canvas=FigureCanvas(fig)
     response=HttpResponse(content_type='image/png')

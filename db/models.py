@@ -47,6 +47,9 @@ class Session(models.Model):
     detector = models.ForeignKey(Detector, null=True)
     typ = models.IntegerField("Type", default=0, choices=SESSION_TYPES)
     wakeup = models.DateTimeField("Wakeup", null=True)
+    rating = models.DecimalField("Rating", max_digits=1, decimal_places=0, null=True)
+    # Do we need this ?
+    #alone = models.BooleanField("Alone", null=True, default=True, help_text="Sleeping with someone else in the bed")
 
     @property
     def week(self):
