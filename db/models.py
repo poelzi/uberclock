@@ -41,8 +41,8 @@ class Session(models.Model):
     """
     One Sleep Session
     """
-    start = models.DateTimeField("Start", null=False, auto_now_add=True)
-    stop = models.DateTimeField("Stop", null=False, auto_now_add=True)
+    start = models.DateTimeField("Start", null=False, auto_now_add=True, db_index=True)
+    stop = models.DateTimeField("Stop", null=False, auto_now_add=True, db_index=True)
     user = models.ForeignKey(User, null=True)
     detector = models.ForeignKey(Detector, null=True)
     typ = models.IntegerField("Type", default=0, choices=SESSION_TYPES)
@@ -60,7 +60,7 @@ class Entry(models.Model):
     date = models.DateTimeField("Date", null=False, auto_now_add=True)
     value = models.IntegerField(max_length=10, null=False)
     counter = models.IntegerField(max_length=3, null=True)
-    session = models.ForeignKey(Session, null=True)
+    session = models.ForeignKey(Session, null=True, db_index=True)
 
     def __repr__(self):
         return "<Entry %s %d>" %(self.date, self.value)
