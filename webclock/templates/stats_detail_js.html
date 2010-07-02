@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block header %}
+<!--[if IE]><script language="javascript" type="text/javascript" src="/static/js/jquery/excanvas.js"></script><![endif]-->
+<script language="javascript" type="text/javascript" src="/static/js/jquery/jquery.jqplot.js"></script>
+<link rel="stylesheet" type="text/css" href="/static/js/jquery/jquery.jqplot.css" />
+
+<script type="text/javascript" src="/static/js/jquery/plugins/jqplot.dateAxisRenderer.min.js"></script>
+<script type="text/javascript" src="/static/js/jquery/plugins/jqplot.canvasTextRenderer.min.js"></script>
+<script type="text/javascript" src="/static/js/jquery/plugins/jqplot.canvasAxisTickRenderer.min.js"></script>
+<script type="text/javascript" src="/static/js/jquery/plugins/jqplot.highlighter.min.js"></script>
+<script type="text/javascript" src="/static/js/jquery/plugins/jqplot.cursor.min.js"></script>
+
+{% endblock %}
+{% block content %}
+<div class="pager">
+{% if prev %}<a href="{% url webclock.views.stats_detail prev.id %}">Previous</a>{% endif %}
+<a href="../">Up</a>
+{% if next %}<a href="{% url webclock.views.stats_detail next.id %}">Next</a>{% endif %}
+</div>
+<br />
+<div class="jqPlot" id="chart1" style="height:500px; width:800px;"></div>
+<div class="jqPlot" id="chart2" style="height:100px; width:200px;"></div>  
+
+{% endblock %}
+
+{% block js_footer %}
+  <script type="text/javascript">
+var Points = [];
+
+function draw(data) {
+  last = 0;
+  last_index = 0;
+  skiped = 0;
+  $.each(data, function(index, value) {
+      if((last > value.value) && (last - value.value > 1000) ||
+         (last < value.value) && (value.value - last > 1000)) {
+        if(skiped)
+            Points.push([skiped.date, skiped.value]);
+        Points.push([value.date, value.value]);
+        last = value;
+        last_index = index;
+      } else if (index - last_index > 10) {
+        Points.push([value.date, value.value]);
+        last = value;
+        last_index = index;
+      } else {
+        skiped = value;
+      }
+  });
+
+//  $("#list").html("Name:"+datos[1].name+"<br>"+"Last Name:"+datos[1].lastname+"<br>"+"Address:"+datos[1].address);
+//console.log(Points);
+  Plot();
+}
+
+var cosPoints = [];
+/*for (var i=0; i<2*Math.PI; i+=0.4){ 
+  cosPoints.push([i, Math.cos(i)]); 
+} 
+var sinPoints = []; 
+for (var i=0; i<2*Math.PI; i+=0.4){ 
+   sinPoints.push([i, 2*Math.sin(i-.8)]); 
+} 
+var powPoints1 = []; 
+for (var i=0; i<2*Math.PI; i+=0.4) { 
+    powPoints1.push([i, 2.5 + Math.pow(i/4, 2)]); 
+} 
+var powPoints2 = []; 
+for (var i=0; i<2*Math.PI; i+=0.4) { 
+    powPoints2.push([i, -2.5 - Math.pow(i/4, 2)]); 
+} 
+*/
+function Plot() {
+    plot1 = $.jqplot('chart1', [Points], { 
+        title:'{{ session.start|date }} - {{ session.stop|date }}', 
+        axes:{xaxis:{renderer:$.jqplot.DateAxisRenderer,
+                     tickOptions:{formatString:'%H:%M'},
+        }},
+        series:[ 
+            {lineWidth:1, markerOptions:{size: 2, style:'x'}}, 
+    /*        {showLine:false, markerOptions:{size: 7, style:'x'}}, 
+            {markerOptions:{style:'circle'}}, 
+            {lineWidth:5, markerOptions:{style:'filledSquare', size:14}}
+    */
+        ]
+    });
+    
+    controllerPlot1 = $.jqplot('chart2', [Points], {
+  seriesDefaults:{showMarker: false},
+  series:[
+    {lineWidth:1, showMarker: false},
+  ],
+  cursor:{
+    zoom:true,
+    showTooltip: false
+  },
+  axesDefaults:{
+    tickOptions:{
+      showLabel:false, 
+      showMark:false
+    }
+  },
+    axes:{xaxis:{renderer:$.jqplot.DateAxisRenderer,
+                 tickOptions:{formatString:'%H:%M'},
+    }},
+});
+
+$.jqplot.Cursor.zoomProxy(plot1, controllerPlot1);
+}
+Plot();
+$.getJSON("/api/session/{{session.id}}/entries/","",draw);
+
+</script>
+{% endblock %}
