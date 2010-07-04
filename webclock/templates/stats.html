@@ -1,4 +1,16 @@
 {% extends "base.html" %}
+{% load webclock %}
+
+{% block menuextra %}
+<li class="toplink">
+<form id="stats_type_form">
+<select id="stats_type" name="typ">
+<option value="png" {%if "png" == current%}selected="1"{%endif%}>Image</option>
+<option value="js" {%if "js" == current%}selected="1"{%endif%}>Interactive</option>
+</select>
+</form>
+</li>
+{% endblock %}
 
 
 {% block content %}
@@ -8,10 +20,16 @@
 {% else %}
     {% ifchanged session.week%}<h3>Week {{ session.start|date:"W" }}</h3>{% endifchanged %}
 {% endif %}
-<a href="/stats/{{ session.id }}/">{{ session.start|date:"DATETIME_FORMAT" }} - {{ session.stop|date:"DATETIME_FORMAT" }}</a><br/>
-
-
+<a href="/stats/{{ session.id }}/" class="stats_detail">{{ session.start|date:"DATETIME_FORMAT" }} - {{ session.stop|date:"DATETIME_FORMAT" }} ({{session.length|timelengh}})</a><br/>
 {% endfor %}
+
+{% block js_footer %}
+<script type="text/javascript">
+$('#stats_type').change(function() {
+  $('#stats_type_form').submit();
+});
+</script>
+{% endblock %}
 
 
 {% endblock %}

@@ -4,6 +4,7 @@
 <!--[if IE]><script language="javascript" type="text/javascript" src="/static/js/jquery/excanvas.js"></script><![endif]-->
 <script language="javascript" type="text/javascript" src="/static/js/jquery/jquery.jqplot.js"></script>
 <link rel="stylesheet" type="text/css" href="/static/js/jquery/jquery.jqplot.css" />
+<script type="text/javascript" src="/static/js/jquery/jquery.json.min.js"></script>
 
 <script type="text/javascript" src="/static/js/jquery/plugins/jqplot.dateAxisRenderer.min.js"></script>
 <script type="text/javascript" src="/static/js/jquery/plugins/jqplot.canvasTextRenderer.min.js"></script>
@@ -19,29 +20,94 @@
 {% if next %}<a href="{% url webclock.views.stats_detail next.id %}">Next</a>{% endif %}
 </div>
 <br />
-<div class="jqPlot" id="chart1" style="height:500px; width:800px;"></div>
-<div class="jqPlot" id="chart2" style="height:100px; width:200px;"></div>  
+<table style="border:0px;"> 
+  <tr><td> 
+    <div class="jqPlot" id="chart1" style="height:350px; width:600px;"></div> 
+  </td> 
+  <td style="text-align:center"> 
+    <div class="jqPlot" id="chart2" style="height:120px; width:180px;"></div> 
+    <button onclick="controllerPlot1.resetZoom()">Reset Zoom</button><br/><br/><br/>
+    <p>Select type to edit:<br/>
+    <select id="selectType">
+        <option value="wake">Wakeup</option>
+        <option value="lights">Lights</option>
+        <option value="start">Start</option>
+        <option value="stop">End</option>
+    </select><br/>
+    <button id="buttonSave">Save</button>
+    </p>
+  </td></tr> 
+</table> 
 
 {% endblock %}
 
 {% block js_footer %}
   <script type="text/javascript">
+
 var Points = [];
+var Extra = [
+// wake
+[],
+// lights
+[],
+// start
+[],
+// end
+[]]
+
+var plot1 = null;
+var plot2 = null;
+var session_id = {{session.id}};
+
+function clickHandler(ev, gridpos, datapos, neighbor, plot) {
+    if(neighbor && plot1 && plot == plot1) {
+        typ = $("#selectType").attr("selectedIndex")
+
+        if (Extra[typ].length && neighbor.data[2] == Extra[typ][0][2]) {
+            Extra[typ] = []
+        } else {
+            date = new Date()
+            date.setTime(neighbor.data[0])
+            Extra[typ] = [[date, neighbor.data[1], neighbor.data[2]]]
+        }
+
+        plot1.series[typ+1].data = Extra[typ]
+        plot1.drawSeries(typ+1)
+    }
+}
+
+function parseLearn(data) {
+    var keys = ["wake", "lights", "start", "stop"];
+    for (i in keys) {
+        i = parseInt(i)
+        key = keys[i]
+        if(data[key]) {
+            date = new $.date(data[key].date)
+
+            Extra[i] = [[date,data[key].value,data[key].id]]
+            //Extra[i] = []
+        } else {
+            Extra[i] = []
+        }
+    }
+    // we have to replot here
+    plot1.replot()
+}
 
 function draw(data) {
   last = 0;
   last_index = 0;
   skiped = 0;
   $.each(data, function(index, value) {
-      if((last > value.value) && (last - value.value > 1000) ||
-         (last < value.value) && (value.value - last > 1000)) {
+      if((last > value.value) && (last - value.value > 100) ||
+         (last < value.value) && (value.value - last > 100)) {
         if(skiped)
-            Points.push([skiped.date, skiped.value]);
-        Points.push([value.date, value.value]);
+            Points.push([skiped.date, skiped.value, skiped.id]);
+        Points.push([value.date, value.value, value.id]);
         last = value;
         last_index = index;
       } else if (index - last_index > 10) {
-        Points.push([value.date, value.value]);
+        Points.push([value.date, value.value, value.id]);
         last = value;
         last_index = index;
       } else {
@@ -49,66 +115,92 @@ function draw(data) {
       }
   });
 
-//  $("#list").html("Name:"+datos[1].name+"<br>"+"Last Name:"+datos[1].lastname+"<br>"+"Address:"+datos[1].address);
-//console.log(Points);
-  Plot();
+
+  plot();
+  $.getJSON("/api/session/{{session.id}}/learndata/","",parseLearn);
+
 }
 
-var cosPoints = [];
-/*for (var i=0; i<2*Math.PI; i+=0.4){ 
-  cosPoints.push([i, Math.cos(i)]); 
-} 
-var sinPoints = []; 
-for (var i=0; i<2*Math.PI; i+=0.4){ 
-   sinPoints.push([i, 2*Math.sin(i-.8)]); 
-} 
-var powPoints1 = []; 
-for (var i=0; i<2*Math.PI; i+=0.4) { 
-    powPoints1.push([i, 2.5 + Math.pow(i/4, 2)]); 
-} 
-var powPoints2 = []; 
-for (var i=0; i<2*Math.PI; i+=0.4) { 
-    powPoints2.push([i, -2.5 - Math.pow(i/4, 2)]); 
-} 
-*/
-function Plot() {
-    plot1 = $.jqplot('chart1', [Points], { 
+function send_learndata() {
+    data = {"dummy":1 }
+
+    if(Extra[0].length)
+        data["wake"] = Extra[0][0][2];
+    if(Extra[1].length)
+        data["lights"] = Extra[1][0][2];
+    if(Extra[2].length)
+        data["start"] = Extra[2][0][2];
+    if(Extra[3].length)
+        data["stop"] = Extra[3][0][2];
+    send_dict = {
+            url: "/api/session/"+session_id+"/learndata/",
+            type: "POST",
+            data: $.param(data),
+            processData: false,
+            dataType: "json",
+            contentType: "application/x-www-form-urlencoded",
+            success: function(json, textStatus) {
+                    parseLearn(json);
+                    //$.each([json], success_callback);
+            },
+    };
+    $.ajax(send_dict);
+    return false;
+};
+
+
+function plot() {
+    //global plot1, plot2;
+    plot1 = $.jqplot('chart1', [Points, Extra[0], Extra[1], Extra[2], Extra[3]], { 
         title:'{{ session.start|date }} - {{ session.stop|date }}', 
         axes:{xaxis:{renderer:$.jqplot.DateAxisRenderer,
-                     tickOptions:{formatString:'%H:%M'},
+                     tickOptions:{formatString:'%H:%M:%S',
+                                  angle: -30},
         }},
         series:[ 
-            {lineWidth:1, markerOptions:{size: 2, style:'x'}}, 
-    /*        {showLine:false, markerOptions:{size: 7, style:'x'}}, 
-            {markerOptions:{style:'circle'}}, 
-            {lineWidth:5, markerOptions:{style:'filledSquare', size:14}}
-    */
-        ]
-    });
-    
+            {lineWidth:1, markerOptions:{size: 2, style:'x'} }, 
+            {lineWidth:0, markerOptions:{size: 7, style:'filledSquare'},
+             color: "#FF0000" }, 
+            {lineWidth:0, markerOptions:{size: 7, style:'filledSquare'},
+             color: "#F0F000" }, 
+            {lineWidth:0, markerOptions:{size: 7, style:'dot'},
+             color: "#00FF00" }, 
+            {lineWidth:0, markerOptions:{size: 7, style:'dot'},
+             color: "#00FFFF" }, 
+            ],
+        }
+    );
     controllerPlot1 = $.jqplot('chart2', [Points], {
-  seriesDefaults:{showMarker: false},
-  series:[
-    {lineWidth:1, showMarker: false},
-  ],
-  cursor:{
-    zoom:true,
-    showTooltip: false
-  },
-  axesDefaults:{
-    tickOptions:{
-      showLabel:false, 
-      showMark:false
-    }
-  },
-    axes:{xaxis:{renderer:$.jqplot.DateAxisRenderer,
-                 tickOptions:{formatString:'%H:%M'},
-    }},
-});
-
-$.jqplot.Cursor.zoomProxy(plot1, controllerPlot1);
+        seriesDefaults:{showMarker: false},
+        series:[
+            {lineWidth:1, showMarker: false},
+        ],
+        cursor:{
+            zoom:true,
+            showTooltip: false
+        },
+        axesDefaults:{
+            tickOptions:{
+                showLabel:false, 
+                showMark:false
+            }
+        },
+        highlighter: {
+            show:false,
+        },
+        axes:{xaxis:{renderer:$.jqplot.DateAxisRenderer, 
+                     tickOptions:{formatString:'%H:%M'},
+        }},
+    });
+    $.jqplot.Cursor.zoomProxy(plot1, controllerPlot1);
 }
-Plot();
+// create empty plot
+plot();
+
+$.jqplot.eventListenerHooks.push(['jqplotClick', clickHandler]);
+
+
+$('#buttonSave').click(send_learndata)
 $.getJSON("/api/session/{{session.id}}/entries/","",draw);
 
 </script>

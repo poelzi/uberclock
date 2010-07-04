@@ -1,9 +1,12 @@
 # Create your views here.
 # Create your views here.
+import datetime, os, re
+
+
 from django.shortcuts import render_to_response, get_object_or_404
 from django.template import RequestContext
 from django.http import HttpResponse
-import datetime, os, re
+from django.conf import settings
 from uberclock.db.models import Entry, Session
 
 INDEX_PATH = os.path.join(os.path.dirname(__file__), 
@@ -20,23 +23,32 @@ def get_clock_types():
         match = re.search("webclock_name (.*)", content)
         if match:
             res[os.path.basename(item)] = match.group(1)
+    for name in settings.CHUMBY_URLS:
+        res["chumby_%s" %name] = "Chumby: %s" %name
     return res
 
 
 def index(request):
     types = get_clock_types()
 
+    data = {"types": types}
+
+
     typ = request.COOKIES.get("webclock_clock", "simple.html")
 
     typ = request.GET.get("typ", typ)
-    if not typ in types:
-        typ = "simple.html"
+    
+    if typ[:7] == 'chumby_':
+        data["chumby_code"] = settings.CHUMBY_URLS.get(typ[7:], "")
+        template = "chumby.html"
+    else:
+        if not typ in types:
+            typ = "simple.html"
+        template = typ
 
-    data = {"types": types,
-            "current": typ,
-           }
+    data["current"] = typ
 
-    ret = render_to_response('webclock/index/%s' %typ,
+    ret = render_to_response('webclock/index/%s' %template,
                               data,
                               context_instance=RequestContext(request))
 
@@ -48,15 +60,28 @@ def index(request):
 
 def stats(request):
     now = datetime.datetime.now()
+
+    typ = request.COOKIES.get("webclock_stats", "png")
+    typ = request.GET.get("typ", typ)
+
+    if typ not in ["js", "png"]:
+        typ = "png"
+
     data = {
         'now': now,
         'now_week': now.isocalendar()[1],
-        'sessions': Session.objects.all().order_by("-id")
+        'sessions': Session.objects.all().order_by("-id"),
+        'current': typ
         }
 
-    return render_to_response('stats.html',
+    ret = render_to_response('stats.html',
                               data,
                               context_instance=RequestContext(request))
+
+    if request.COOKIES.get("webclock_stats", "png") != typ:
+        ret.set_cookie("webclock_stats", value=typ)
+
+    return ret
 
 def stats_detail(request, session):
     now = datetime.datetime.now()
@@ -74,18 +99,34 @@ def stats_detail(request, session):
     else:
         prev = None
 
+    typ = request.COOKIES.get("webclock_stats", "png")
+    typ = request.GET.get("typ", typ)
+
+    if typ == "js":
+        template = 'stats_detail_js.html'
+
+    else:
+        template = 'stats_detail.html'
+        typ = "png"
+        
 
     data = {
         'prev': prev,
         'next': next,
         'now': now,
         'now_week': now.isocalendar()[1],
-        'session': sess
+        'session': sess,
+        'current': typ
         }
 
-    return render_to_response('stats_detail.html',
+    ret = render_to_response(template,
                               data,
                               context_instance=RequestContext(request))
+    
+    if request.COOKIES.get("webclock_stats", "png") != "png":
+        ret.set_cookie("webclock_stats", value=typ)
+
+    return ret
 
 
 # file charts.py

@@ -30,10 +30,25 @@ class SessionEntriesHandler(BaseHandler):
 #        return ('session_entries_handler', ['session'])
 
 class SessionLearnHandler(BaseHandler):
-    allowed_methods = ('GET','POST', 'PUT', 'DELETE')
+    allowed_methods = ('GET', 'POST', 'DELETE')
     exclude = ('session',)
     model = LearnData
 
-#     @staticmethod
-#     def resource_uri():
-#         return ('session_learn_handler', ['session'])
+    def read(self, request, session=None):
+        return Session.objects.get(id=session).learndata
+
+    def create(self, request, *args, **kwargs):
+
+        session = Session.objects.get(id=kwargs["session"])
+        ld = session.learndata
+
+        for key in ["wake", "lights", "start", "stop"]:
+            if key in request.POST:
+                if session.entry_set.filter(id=request.POST[key]).count():
+                    setattr(ld, "%s_id" %key, request.POST[key])
+            else:
+                setattr(ld, "%s_id" %key, None)
+
+        ld.save()
+
+        return ld

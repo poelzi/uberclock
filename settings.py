@@ -2,6 +2,7 @@
 
 import os.path
 
+DEVELOPMENT_MODE = False
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
 
@@ -78,7 +79,8 @@ TEMPLATE_LOADERS = (
 )
 
 MIDDLEWARE_CLASSES = (
-    'django.middleware.common.CommonMiddleware',
+    'piston.middleware.ConditionalMiddlewareCompatProxy',
+    'piston.middleware.CommonMiddlewareCompatProxy',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -99,12 +101,14 @@ INSTALLED_APPS = (
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.sites',
+    'django.contrib.markup',
 #    'django.contrib.messages',
     # Uncomment the next line to enable the admin:
     'django.contrib.admin',
     'uberclock.db',
     'uberclock.webclock',
     'piston',
+    'uberclock.api',
 )
 
 
@@ -119,9 +123,30 @@ SERVER_PORT = 8000
 
 CLOCK_SESSION_TIMEOUT = 60*5
 
+PISTON_STREAM_OUTPUT = True
+
+CHUMBY_URLS = {
+  'default' : '<embed width="800" height="480" quality="high" bgcolor="#FFFFFF" wmode="transparent" name="virtualchumby" type="application/x-shockwave-flash" src="http://www.chumby.com/virtualchumby_noskin.swf" FlashVars="_chumby_profile_url=http%3A%2F%2Fwww.chumby.com%2Fxml%2Fvirtualprofiles%2FE8E34C1E-726B-11DF-BA50-001B24F07EF4&amp;baseURL=http%3A%2F%2Fwww.chumby.com" pluginspage="http://www.macromedia.com/go/getflashplayer"></embed>'
+}
 
 import os
 
 if not os.path.exists(os.path.expanduser("~/.uberclock")):
     os.mkdir(os.path.expanduser("~/.uberclock"))
 
+try:
+    from settings_local import *
+except ImportError:
+    import sys
+    sys.stderr.write('Unable to read settings_local.py\n')
+
+if DEVELOPMENT_MODE:
+    DATABASE_ENGINE = DATABASES['default']['ENGINE'].split('.')[-1]
+    INSTALLED_APPS += ('django_evolution',)
+
+try:
+    INSTALLED_APPS += ADDITIONAL_APPS
+except NameError:
+    pass
+
+#PISTON_DISPLAY_ERRORS = DEBUG
