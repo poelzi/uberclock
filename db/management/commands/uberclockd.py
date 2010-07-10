@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand, CommandError
 from uberclock.db.models import DBWriter
 from django.conf import settings
 import sys, thread
+from optparse import make_option
 
 import serial
 
@@ -17,21 +18,29 @@ import logging
 
 class Command(BaseCommand):
     args = ''
-    help = 'Runs a background daemon'
+    help = 'Runs the UberClock background daemon'
+    option_list = BaseCommand.option_list + (
+        make_option('--msp-ap',
+            dest='msp_ap',
+            default=None,
+            help='EZ430 Accesspoint Path'),
+        )
 
     def handle(self, *args, **options):
+        print options, args
         logging.basicConfig(level=logging.DEBUG)
         thread.start_new_thread(self.start_webserver, ())
 
         if settings.CLOCK_HARDWARE.lower() == "ezchronos":
+            self.msp_ap = options['msp_ap'] or settings.EZ_SERIAL
             self.ez_chronos(*args, **options)
     
     def ez_chronos(self, *args, **options):
         while True:
             try:
-                ser = serial.Serial(settings.EZ_SERIAL, 115200,timeout=1)
+                ser = serial.Serial(self.msp_ap, 115200,timeout=1)
             except serial.serialutil.SerialException:
-                logging.error("Can't open console %s" %settings.EZ_SERIAL)
+                logging.error("Can't open console %s" %self.msp_ap)
                 time.sleep(5)
                 continue
 
@@ -40,7 +49,7 @@ class Command(BaseCommand):
             pv.reset()
             pv.start_ap()
             try:
-                logging.info("OpenChronos interface started on %s" %settings.EZ_SERIAL)
+                logging.info("OpenChronos interface started on %s" %self.msp_ap)
                 pv.loop_smpl_get()
             except KeyboardInterrupt:
                 pv.reset()

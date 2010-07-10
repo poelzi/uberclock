@@ -5,6 +5,7 @@ from django.conf import settings
 import struct
 import logging
 import datetime
+import time
 # Create your models here.
 
 DETECTOR_TYPES = (
@@ -17,6 +18,7 @@ SESSION_TYPES = (
  (2, "One REM"),
 )
 
+RF_ID_BIT_LENGHT = 3
 
 class Detector(models.Model):
     """
@@ -24,7 +26,11 @@ class Detector(models.Model):
     """
     name = models.CharField("Name", max_length=100, null=False)
     typ = models.IntegerField("Type", choices=DETECTOR_TYPES)
+    ident = models.CharField("Identifier", null=True, max_length=100, unique=True, db_index=True)
     default_user = models.ForeignKey(User, null=True)
+
+    def __repr__(self):
+        return '<Detector %s >' %self.ident
 
 class WakeupTime(models.Model):
     """
@@ -36,6 +42,27 @@ class WakeupTime(models.Model):
     weekday = models.IntegerField("Weekday", null=True) 
     session_typ = models.IntegerField("Type", default=0, choices=SESSION_TYPES)
     wakeup = models.TimeField("Wakeup", null=False)
+
+
+class SessionManager(models.Manager):
+    def get_active_session(self, rf_id):
+        now = datetime.datetime.now()
+        start = now - datetime.timedelta(seconds=settings.CLOCK_SESSION_TIMEOUT)
+        return self.get(stop__gt=start, closed=False, rf_id=rf_id)
+
+    def get_active_sessions(self, **kwargs):
+        now = datetime.datetime.now()
+        start = now - datetime.timedelta(seconds=settings.CLOCK_SESSION_TIMEOUT)
+        return self.filter(stop__gt=start, closed=False, **kwargs)
+
+    def get_new_rf_id(self):
+        id_s = xrange(1, (2**(RF_ID_BIT_LENGHT+1)))
+        now = datetime.datetime.now()
+        start = now - datetime.timedelta(seconds=settings.CLOCK_SESSION_TIMEOUT)
+        actives = self.filter(stop__gt=start).values_list("rf_id", flat=True)
+        for x in id_s:
+            if x not in actives:
+                return x
 
 class Session(models.Model):
     """
@@ -49,6 +76,10 @@ class Session(models.Model):
     wakeup = models.DateTimeField("Wakeup", null=True)
     rating = models.IntegerField("Rating", null=True)
     deleted = models.BooleanField("Deleted", default=False)
+    rf_id = models.IntegerField("RF Id", null=True)
+    closed = models.BooleanField("Session has ended", default=False)
+
+    objects = SessionManager()
     # Do we need this ?
     #alone = models.BooleanField("Alone", null=True, default=True, help_text="Sleeping with someone else in the bed")
 
@@ -108,6 +139,12 @@ class LearnData(models.Model):
     learned = models.BooleanField(default=False)
 
 
+SIMPLICITI_PHASE_CLOCK_START_RESPONSE = 0x54
+
+logging.log_level = logging.DEBUG
+
+RF_ID_MASK = 7<<5
+COUNTER_MASK = 31
 
 class DBWriter(ez_chronos.CommandDispatcher):
 
@@ -137,28 +174,76 @@ class DBWriter(ez_chronos.CommandDispatcher):
 
     #phase clock
     def smpl_0x03(self, data):
+        """
+        Receive sleep data
+        """
         # acceleration data
         timeout=datetime.timedelta(seconds=settings.CLOCK_SESSION_TIMEOUT)
         now = datetime.datetime.now()
         #FIXME: detect device
         device = 1
         
-        # autostart a new session if there where no messages in timeout
-        if not device in self.last_msg or not device in self.session or\
-           now > self.last_msg[device]+timeout:
-            #FIXME add device & user
-            self.session[device] = session = Session(start=now, stop=now)
-            session.save()
-            logging.debug("start new session: %s @ %s" %(session.id, session.start))
-        else:
-            session = self.session[device]
         self.last_msg[device] = now
         mdata = self.get_smpl_data(data)
         var = struct.unpack('H', mdata[:2])[0]
-        counter = ord(mdata[2])
-        logging.debug("%s %3d %6d %s" %(session.id, counter, var, "#"*max(min((var/500), 80),1)))
+        counter = ord(mdata[2])&COUNTER_MASK
+        rf_id = (ord(mdata[2])&RF_ID_MASK)>>5
+
+        try:
+            session = Session.objects.get_active_session(rf_id)
+        except Session.DoesNotExist:
+            logging.warning("Session id sent which is not active. Creating a new Session")
+            session = Session(start=now, stop=now, rf_id=rf_id)
+            session.save()
+
+        logging.debug("%s S:%2d C:%2d %6d %s" %(session.id, rf_id, counter, var, "#"*max(min((var/500), 80),1)))
         entry = Entry(value=var, counter=counter, session=session)
         session.stop = now
         session.save()
         
         entry.save()
+
+    def smpl_0x04(self, data):
+        """
+        Start new session
+        """
+        print "04", repr(data)
+        mdata = self.get_smpl_data(data)
+        ident = "0x%02x%02x" %(ord(mdata[0]), ord(mdata[1]))
+        device, created = Detector.objects.get_or_create(ident=ident, defaults={"name": "eZ430 OpenChronos",
+                                                                      "ident": ident,
+                                                                      "typ": DETECTOR_TYPES[0][0],
+                                                                      })
+        if created:
+            device.save()
+
+        logging.info("New Session Request from: %s" %(device.ident))
+
+        sessions = Session.objects.get_active_sessions(detector=device)
+
+        now = datetime.datetime.now()
+        delta = datetime.timedelta(seconds=10)
+        active_session = None
+        for session in sessions:
+            if session.start > now-delta:
+                # we have an active session running
+                active_session = session
+
+        if not active_session:
+            rf_id = Session.objects.get_new_rf_id()
+            typ = ord(mdata[2])
+            if not any((True for x in SESSION_TYPES if x[0] == typ)):
+                typ = 0
+            active_session = Session(start=now, stop=now, detector=device, user=device.default_user,
+                              rf_id=rf_id, typ=typ)
+            active_session.save()
+
+        logging.info("Send Session ID: %s" %(active_session.rf_id))
+
+        data = [SIMPLICITI_PHASE_CLOCK_START_RESPONSE, active_session.rf_id]
+        self.send_smpl_data(data)
+        # we shall not do anything until the clock reads out the 
+        # session data
+        time.sleep(0.030)
+        
+        

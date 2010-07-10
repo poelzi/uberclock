@@ -2,6 +2,13 @@ import serial
 import array
 import sys
 import struct
+import logging
+from time import sleep
+
+def msleep(msec):
+    sleep(1.0/(1000*msec))
+
+log = logging.getLogger("ez_chronos")
 
 # // Command codes
 BM_GET_STATUS =             0x00
@@ -66,6 +73,11 @@ HW_WBSL_ERROR =                  0x0B
 HW_WBSL_STOPPED =                0x0C
 HW_WBSL_LINK_TIMEOUT =           0x0D
 
+BM_SYNC_DATA_LENGTH  =           19
+
+SYNC_AP_CMD_NOOP =               0x01
+SYNC_DATA_SENT =                 0x55
+
 class Simpliciti(object):
     """
     Connection class for interaction with a CC1111 dongle
@@ -81,7 +93,19 @@ class Simpliciti(object):
         self.rbuffer = ""
         self.autosync = True
         self.last_cmd = ()
+        self._nullread()
+        self.debug = False
     #def 
+
+    def _nullread(self):
+        self.stream.read()
+
+    @staticmethod
+    def dstr(data):
+        rv = ""
+        for x in data:
+            rv += "\\x%02x" %ord(x)
+        return rv
 
     def close(self):
         self.stream.close()
@@ -114,11 +138,16 @@ class Simpliciti(object):
         else:
             res = array.array('B', [0xFF, cmd_, ln])
         self.last_cmd = (cmd_, ln)
+        if self.debug:
+            if res.tostring() != '\xff\x08\x07\x00\x00\x00\x00':
+                print "send:" + self.dstr(res.tostring())
         self.stream.write(res.tostring())
+        msleep(15)
         return ln
 
     def sync(self):
         self.last_cmd = ()
+        self.stream.read()
         self.send_read(BM_GET_STATUS, [0x00])
 
     def read(self, ln=None):
@@ -126,12 +155,13 @@ class Simpliciti(object):
         self.rbuffer += self.stream.read(ln or self.last_cmd[1])
         
         if len(self.rbuffer) < 2:
-            raise ValueError, "Not enough bytes returned"
+            raise ValueError, "Not enough bytes returned. Buffer: %s" %len(self.rbuffer)
         if ord(self.rbuffer[0]) != 0xFF:
             if not self.autosync:
                 raise Warning, "Desync detected"
             for i in xrange(len(self.rbuffer)):
                 if ord(self.rbuffer[i]) == 0xFF:
+                    log.info("offset detected %s" %i)
                     if ord(self.rbuffer[i+1]) == self.last_cmd[0] and \
                        ord(self.rbuffer[i+2]) == self.last_cmd[1]:
                         offset = i
@@ -152,6 +182,7 @@ class Simpliciti(object):
     ### common commands
     
     def reset(self):
+        self.stream.read()
         self.send_read(BM_RESET)
 
     def start_ap(self):
@@ -159,6 +190,27 @@ class Simpliciti(object):
 
     def send_get_smpl_data(self):
         return self.send_read(BM_GET_SIMPLICITIDATA, [0x00, 0x00, 0x00, 0x00])
+
+    def send_smpl_data(self, data, timeout=3000):
+        if len(data) != BM_SYNC_DATA_LENGTH-3:
+            data = data[:BM_SYNC_DATA_LENGTH-3] + [0x00 for x in range(BM_SYNC_DATA_LENGTH-len(data)-3)]
+        snd = self.send_read(BM_SYNC_SEND_COMMAND, data)
+        for i in xrange(timeout/20):
+            msleep(20)
+            buf = self.send_get_smpl_data()
+            if buf != '\xff\x06\x07\xff\x00\x00\x00':
+                print "read", repr(buf)
+            if buf[4] == SYNC_AP_CMD_NOOP and buf[5] == SYNC_DATA_SENT:
+                print "JUHU"
+                return True
+        
+        status = self.status()
+        print "status", repr(status)
+
+
+    def status(self):
+        return self.send_read(BM_GET_STATUS, [0x00])
+
 
     @staticmethod
     def get_smpl_data(data, add=1):
@@ -189,7 +241,7 @@ class CommandDispatcher(Simpliciti):
     def default(self, data):
         print "default"
         if self.debug:
-            print "unhandled", repr(data)
+            print "unhandled", self.dstr(data)
 
     def get_status(self, data):
         if self.debug:
