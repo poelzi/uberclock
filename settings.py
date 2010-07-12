@@ -82,6 +82,7 @@ MIDDLEWARE_CLASSES = (
     'piston.middleware.ConditionalMiddlewareCompatProxy',
     'piston.middleware.CommonMiddlewareCompatProxy',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -102,7 +103,7 @@ INSTALLED_APPS = (
     'django.contrib.sessions',
     'django.contrib.sites',
     'django.contrib.markup',
-#    'django.contrib.messages',
+    'django.contrib.messages',
     # Uncomment the next line to enable the admin:
     'django.contrib.admin',
     'uberclock.db',

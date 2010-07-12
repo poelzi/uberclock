@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+
+{% block content %}
+<h1>Are you sure ?</h1>
+You will merge session {{ source.id }} into {{ session.id }}.
+This will destroy all aditional data known from the source session.
+
+<form method="POST" action="{% url stats_merge session.id source.id %}">
+    <input type="hidden" name="__confirm__" value="1" />{% csrf_token %}
+    <input type="submit" value="merge"/> <a href="{{ session.get_absolute_url }}">cancel</a>
+</form>
+{% endblock %}

@@ -2,12 +2,19 @@
 # Create your views here.
 import datetime, os, re
 
-
+from django.utils.translation import gettext as _
 from django.shortcuts import render_to_response, get_object_or_404
 from django.template import RequestContext
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django.conf import settings
+from django.contrib import messages
+from django.core.urlresolvers import reverse
+
+
+from django.utils.translation import gettext as _
+
 from uberclock.db.models import Entry, Session
+from uberclock.webclock.decorators import confirm_required
 
 INDEX_PATH = os.path.join(os.path.dirname(__file__), 
                            "templates", "webclock", "index")
@@ -87,16 +94,14 @@ def stats_detail(request, session):
     now = datetime.datetime.now()
     sess = get_object_or_404(Session, id__exact=session)
 
-    next = Session.objects.filter(id__exact=sess.id+1)
-    if next: 
-        next = next[0]
-    else:
+    try:
+        next = Session.objects.filter(id__gt=sess.id)[0]
+    except IndexError:
         next = None
 
-    prev = Session.objects.filter(id__exact=sess.id-1)
-    if prev: 
-        prev = prev[0]
-    else:
+    try:
+        prev = Session.objects.filter(id__lt=sess.id).order_by('-id')[0]
+    except IndexError:
         prev = None
 
     typ = request.COOKIES.get("webclock_stats", "png")
@@ -129,13 +134,35 @@ def stats_detail(request, session):
     return ret
 
 
+def merge_session_context(request, session, source):
+    session = get_object_or_404(Session, id=session)
+    source = get_object_or_404(Session, id=source)
+    return RequestContext(request, {'session': session, 'source': source})
+
+@confirm_required('webclock/confirm_merge.html', merge_session_context)
+def stats_merge(request, session, source):
+
+    sess = get_object_or_404(Session, id__exact=session)
+    sess.merge(Session.objects.get(id__exact=source))
+    
+    messages.add_message(request, messages.INFO, _("Successfull merged"))
+
+    return HttpResponseRedirect(reverse("stats", args=(session,)))
+
+def stats_delete(request, session):
+    pass
+
+
+
 # file charts.py
 def png_graph(request, session=None):
     import random
-    from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-    from matplotlib.figure import Figure
-    from matplotlib.dates import DateFormatter
-
+    try:
+        from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+        from matplotlib.figure import Figure
+        from matplotlib.dates import DateFormatter
+    except:
+        return HttpResponse("Install matplotlib to see graphics", status=500)
 
     fig=Figure()
     ax=fig.add_subplot(111)

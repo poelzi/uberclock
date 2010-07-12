@@ -27,6 +27,20 @@
   <td style="text-align:center"> 
     <div class="jqPlot" id="chart2" style="height:120px; width:180px;"></div> 
     <button onclick="controllerPlot1.resetZoom()">Reset Zoom</button><br/><br/><br/>
+    <div id="moreactions_box">
+        <div id="moreactions_toggler"><a id="moreactions_toggle" href="">More Actions</a></div>
+        <div id="moreactions">
+            <ul>
+                <li><a href="{% url admin:db_session_delete session.id %}">Delete</a></li>
+                {% if prev %}
+                    <li><a href="{% url stats_merge session.id prev.id %}">Merge with Previous</a></li>
+                {% endif %}
+                {% if next %}
+                    <li><a href="{% url stats_merge session.id next.id %}">Merge with Next</a></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
     <p>Select type to edit:<br/>
     <select id="selectType">
         <option value="wake">Wakeup</option>
@@ -152,7 +166,7 @@ function send_learndata() {
 function plot() {
     //global plot1, plot2;
     plot1 = $.jqplot('chart1', [Points, Extra[0], Extra[1], Extra[2], Extra[3]], { 
-        title:'{{ session.start|date }} - {{ session.stop|date }}', 
+        title:'{{ session.start|date:"DATE_FORMAT" }}: {{ session.start|time }}  - {{ session.stop|time }}', 
         axes:{xaxis:{renderer:$.jqplot.DateAxisRenderer,
                      tickOptions:{formatString:'%H:%M:%S',
                                   angle: -30},

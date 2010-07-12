@@ -1,7 +1,9 @@
 from django.db import models
 from uberclock.tools import ez_chronos
 from django.contrib.auth.models import User
+from django.contrib import admin
 from django.conf import settings
+from django.utils.dateformat import time_format
 import struct
 import logging
 import datetime
@@ -105,6 +107,30 @@ class Session(models.Model):
     def __repr__(self):
         return "<Session %s %s-%s>" %(self.user, self.start, self.stop)
 
+    def __str__(self):
+        return "Session %s %s-%s" %(self.user, self.start, self.stop)
+
+    def merge(self, source):
+        source.entry_set.all().update(session=self)
+        source.learndata_set.all().delete()
+
+        def cifn(key):
+            var = getattr(source, key)
+            if var and not getattr(self, key):
+                setattr(self, key, var)
+        # copy usefull variables
+        for key in ["user", "wakeup", "rating"]:
+            cifn(key)
+
+        if self.entry_set.all().count():
+            self.start = self.entry_set.all().order_by('date')[0].date
+            self.stop = self.entry_set.all().order_by('-date')[0].date
+
+        self.save()
+        source.delete()
+
+
+
     @property
     def length(self):
         s = (self.stop - self.start).seconds
@@ -121,6 +147,9 @@ class Entry(models.Model):
 
     def __repr__(self):
         return "<Entry %s %d>" %(self.date, self.value)
+
+    def __unicode__(self):
+        return u"Entry at %s: %s" %(self.date, time_format(self.date, settings.TIME_FORMAT))
 
 
 class LearnData(models.Model):
