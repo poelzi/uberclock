@@ -72,13 +72,13 @@ class Session(models.Model):
     """
     start = models.DateTimeField("Start", null=False, auto_now_add=True, editable=False)
     stop = models.DateTimeField("Stop", null=False, auto_now_add=True, editable=False)
-    user = models.ForeignKey(User, null=True)
-    detector = models.ForeignKey(Detector, null=True)
+    user = models.ForeignKey(User, null=True, blank=True)
+    detector = models.ForeignKey(Detector, null=True, blank=True)
     typ = models.IntegerField("Type", default=0, choices=SESSION_TYPES)
-    wakeup = models.DateTimeField("Wakeup", null=True)
-    rating = models.IntegerField("Rating", null=True)
+    wakeup = models.DateTimeField("Wakeup", null=True, blank=True)
+    rating = models.IntegerField("Rating", null=True, blank=True)
     deleted = models.BooleanField("Deleted", default=False)
-    rf_id = models.IntegerField("RF Id", null=True)
+    rf_id = models.IntegerField("RF Id", null=True, blank=True)
     closed = models.BooleanField("Session has ended", default=False)
 
     objects = SessionManager()
@@ -111,6 +111,11 @@ class Session(models.Model):
         length = self.length
         entries = self.entry_set.all().count()
         return u"Session from %s %s (%s:%0.2d) (%s Entries)" %(self.user, format(self.start, settings.DATETIME_FORMAT), length[0], length[1], entries)
+
+    @property
+    def entries_count(self):
+        return self.entry_set.all().count()
+
 
     def merge(self, source):
         source.entry_set.all().update(session=self)
@@ -168,6 +173,11 @@ class LearnData(models.Model):
     stop = models.ForeignKey(Entry, related_name="learn_stop",
                                 help_text="When sleep stopped", null=True)
     learned = models.BooleanField(default=False)
+
+    @property
+    def placed(self):
+        """Did the user set any points"""
+        return any((self.wake, self.lights, self.start, self.stop))
 
 
 SIMPLICITI_PHASE_CLOCK_START_RESPONSE = 0x54

@@ -1,10 +1,14 @@
 {% extends "base.html" %}
+{% load webclock %}
 
 
 {% block content %}
 <h1>Are you sure ?</h1>
 You will merge session {{ source.id }} into {{ session.id }}.
 This will destroy all aditional data known from the source session.
+<br />
+Source: {{ source.start|date:'DATETIME_FORMAT'  }} - {{ source.stop|time }} ({{ source.length|timelengh }}) Entries: {{ source.entries_count }}<br/>
+Into: {{ session.start|date:'DATETIME_FORMAT' }} - {{ session.stop|time }} ({{ session.length|timelengh }})
 
 <form method="POST" action="{% url stats_merge session.id source.id %}">
     <input type="hidden" name="__confirm__" value="1" />{% csrf_token %}

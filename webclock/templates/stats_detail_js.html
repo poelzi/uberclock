@@ -32,6 +32,7 @@
         <div id="moreactions">
             <ul>
                 <li><a href="{% url admin:db_session_delete session.id %}">Delete</a></li>
+                <li><a href="{% url admin:db_session_change session.id %}">Edit</a></li>
                 {% if prev %}
                     <li><a href="{% url stats_merge session.id prev.id %}">Merge with Previous</a></li>
                 {% endif %}
@@ -113,6 +114,7 @@ function draw(data) {
   last_index = 0;
   skiped = 0;
   $.each(data, function(index, value) {
+    /*
       if((last > value.value) && (last - value.value > 100) ||
          (last < value.value) && (value.value - last > 100)) {
         if(skiped)
@@ -127,6 +129,8 @@ function draw(data) {
       } else {
         skiped = value;
       }
+    */
+    Points.push([value.date, value.value, value.id]);
   });
 
 
