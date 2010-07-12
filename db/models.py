@@ -3,7 +3,7 @@ from uberclock.tools import ez_chronos
 from django.contrib.auth.models import User
 from django.contrib import admin
 from django.conf import settings
-from django.utils.dateformat import time_format
+from django.utils.dateformat import time_format, format
 import struct
 import logging
 import datetime
@@ -107,8 +107,10 @@ class Session(models.Model):
     def __repr__(self):
         return "<Session %s %s-%s>" %(self.user, self.start, self.stop)
 
-    def __str__(self):
-        return "Session %s %s-%s" %(self.user, self.start, self.stop)
+    def __unicode__(self):
+        length = self.length
+        entries = self.entry_set.all().count()
+        return u"Session from %s %s (%s:%0.2d) (%s Entries)" %(self.user, format(self.start, settings.DATETIME_FORMAT), length[0], length[1], entries)
 
     def merge(self, source):
         source.entry_set.all().update(session=self)
