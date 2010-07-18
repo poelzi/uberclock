@@ -320,22 +320,22 @@ class DBWriter(ez_chronos.CommandDispatcher):
         else:
             print "no data for next step"
             return
-        ctime = datetime.datetime.now()
-        #{'alarm_hour': 6, 'hour': 4, 'tempCelcius': 272, 'metric': 1, 'month': 8, 'second': 56, 'year': 2009, 'alarm_minute': 30, 'altMeters': 485, 'day': 1, 'minute': 50}
-        if not cdata:
-            return
-        cdata['hour'] = ctime.hour
-        cdata['minute'] = ctime.minute
-        cdata['second'] = ctime.second
-        cdata['day'] = ctime.day
-        cdata['month'] = ctime.month
-        cdata['year'] = ctime.year
-        if settings.CLOCK_ALTITUDE is not None:
-            cdata['alt_meters'] = settings.CLOCK_ALTITUDE
-
-        print "send", cdata, self.build_sync_data(cdata)
 
         for x in xrange(10):
+            # send burst of up to date data
+            ctime = datetime.datetime.now()
+            #{'alarm_hour': 6, 'hour': 4, 'tempCelcius': 272, 'metric': 1, 'month': 8, 'second': 56, 'year': 2009, 'alarm_minute': 30, 'altMeters': 485, 'day': 1, 'minute': 50}
+            if not cdata:
+                return
+            cdata['hour'] = ctime.hour
+            cdata['minute'] = ctime.minute
+            cdata['second'] = ctime.second
+            cdata['day'] = ctime.day
+            cdata['month'] = ctime.month
+            cdata['year'] = ctime.year
+            if settings.CLOCK_ALTITUDE is not None:
+                cdata['alt_meters'] = settings.CLOCK_ALTITUDE
+
             self.send_smpl_data(self.build_sync_data(cdata))
             time.sleep(0.100)
 

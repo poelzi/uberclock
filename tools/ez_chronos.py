@@ -321,7 +321,8 @@ class CommandDispatcher(Simpliciti):
             if self.debug > 3:
                 print "got no data"
         else:
-            print "handle", self.dstr(data)
+            if self.debug >= 2:
+                print "handle", self.dstr(data)
             if hasattr(self, "smpl_%s" %"0x%0.2X" %ord(data[3])):
                 getattr(self, "smpl_%s" %"0x%0.2X" %ord(data[3]))(data)
             else:
