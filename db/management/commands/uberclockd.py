@@ -13,9 +13,6 @@ import os, time
 import django.core.handlers.wsgi
 import logging
 
-#if __name__ == "__main__":
-#    os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
-
 class Command(BaseCommand):
     args = ''
     help = 'Runs the UberClock background daemon'
@@ -27,7 +24,6 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        print options, args
         logging.basicConfig(level=logging.DEBUG)
         thread.start_new_thread(self.start_webserver, ())
 
@@ -52,7 +48,7 @@ class Command(BaseCommand):
                 logging.info("OpenChronos interface started on %s" %self.msp_ap)
                 pv.loop_smpl_get()
             except KeyboardInterrupt:
-                pv.reset()
+                pv.close()
                 ser.close()
                 sys.exit(0)
             except Exception, e:
@@ -61,6 +57,10 @@ class Command(BaseCommand):
                 try: pv.reset()
                 except: pass
                 try: pv.close()
+                except: pass
+                try:
+                    ser.close()
+                    del ser
                 except: pass
 
     def start_webserver(self):

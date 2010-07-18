@@ -6,7 +6,10 @@ import logging
 from time import sleep
 
 def msleep(msec):
-    sleep(1.0/(1000*msec))
+    sleep(0.001*msec)
+
+def splitIntoNPieces(s,n):
+    return [s[i:i+n] for i in range(0, len(s), n)]
 
 log = logging.getLogger("ez_chronos")
 
@@ -78,6 +81,14 @@ BM_SYNC_DATA_LENGTH  =           19
 SYNC_AP_CMD_NOOP =               0x01
 SYNC_DATA_SENT =                 0x55
 
+SYNC_AP_CMD_NOP                       = 0x01
+SYNC_AP_CMD_GET_STATUS                = 0x02
+SYNC_AP_CMD_SET_WATCH                 = 0x03
+SYNC_AP_CMD_GET_MEMORY_BLOCKS_MODE_1  = 0x04
+SYNC_AP_CMD_GET_MEMORY_BLOCKS_MODE_2  = 0x05
+SYNC_AP_CMD_ERASE_MEMORY              = 0x06
+SYNC_AP_CMD_EXIT                      = 0x07
+
 class Simpliciti(object):
     """
     Connection class for interaction with a CC1111 dongle
@@ -93,21 +104,29 @@ class Simpliciti(object):
         self.rbuffer = ""
         self.autosync = True
         self.last_cmd = ()
-        self._nullread()
+        #self._nullread()
         self.debug = False
+        self.sync()
+        print self.dstr(self.send_read(BM_GET_PRODUCT_ID, [0x00, 0x00, 0x00, 0x00]))
     #def 
 
-    def _nullread(self):
-        self.stream.read()
+    #def _nullread(self):
+    #    self.stream.read()
 
     @staticmethod
     def dstr(data):
+        if not data:
+            return ""
         rv = ""
         for x in data:
             rv += "\\x%02x" %ord(x)
         return rv
 
     def close(self):
+        """
+        Shut down gracefully
+        """
+        self.stop_ap()
         self.stream.close()
         self.stream = None
 
@@ -139,16 +158,26 @@ class Simpliciti(object):
             res = array.array('B', [0xFF, cmd_, ln])
         self.last_cmd = (cmd_, ln)
         if self.debug:
-            if res.tostring() != '\xff\x08\x07\x00\x00\x00\x00':
+            if self.debug >= 2:
                 print "send:" + self.dstr(res.tostring())
+            else:
+                if res.tostring() not in ('\xff\x08\x07\x00\x00\x00\x00', '\xff\x32\x04\x00'):
+                    print "send:" + self.dstr(res.tostring())
         self.stream.write(res.tostring())
         msleep(15)
         return ln
 
     def sync(self):
         self.last_cmd = ()
-        self.stream.read()
-        self.send_read(BM_GET_STATUS, [0x00])
+        print "waiting", self.stream.inWaiting()
+        self.stop_ap()
+        #self.stream.read()
+        for i in xrange(10):
+            res = self.send_read(BM_GET_STATUS, [0x00])
+            print self.dstr(res)
+            res = self.send_read(BM_RESET, [])
+            print self.dstr(res)
+            #self.stream.read()
 
     def read(self, ln=None):
         offset = 0
@@ -162,7 +191,8 @@ class Simpliciti(object):
             for i in xrange(len(self.rbuffer)):
                 if ord(self.rbuffer[i]) == 0xFF:
                     log.info("offset detected %s" %i)
-                    if ord(self.rbuffer[i+1]) == self.last_cmd[0] and \
+                    if len(self.rbuffer) >= i+2 and \
+                       ord(self.rbuffer[i+1]) == self.last_cmd[0] and \
                        ord(self.rbuffer[i+2]) == self.last_cmd[1]:
                         offset = i
                         break
@@ -188,29 +218,64 @@ class Simpliciti(object):
     def start_ap(self):
         self.send_read(BM_START_SIMPLICITI)
 
+    def stop_ap(self):
+        #The start access point command needs to come before the stop access point command
+        #in order for the access point to turn off.
+        self.send_read(BM_START_SIMPLICITI)
+        self.send_read(BM_STOP_SIMPLICITI)
+
     def send_get_smpl_data(self):
         return self.send_read(BM_GET_SIMPLICITIDATA, [0x00, 0x00, 0x00, 0x00])
 
-    def send_smpl_data(self, data, timeout=3000):
-        if len(data) != BM_SYNC_DATA_LENGTH-3:
-            data = data[:BM_SYNC_DATA_LENGTH-3] + [0x00 for x in range(BM_SYNC_DATA_LENGTH-len(data)-3)]
-        snd = self.send_read(BM_SYNC_SEND_COMMAND, data)
-        for i in xrange(timeout/20):
-            msleep(20)
-            buf = self.send_get_smpl_data()
-            if buf != '\xff\x06\x07\xff\x00\x00\x00':
-                print "read", repr(buf)
-            if buf[4] == SYNC_AP_CMD_NOOP and buf[5] == SYNC_DATA_SENT:
-                print "JUHU"
-                return True
-        
-        status = self.status()
-        print "status", repr(status)
+    def get_sync_buffer_status(self):
+        res = self.send_read(BM_SYNC_GET_BUFFER_STATUS, [0x00])
+        if self.debug >= 2:
+            print "sync status", self.dstr(res)
+        return ord(res[3])
 
+    def wait_sync_buffer(self, timeout=1000, must=True):
+        for i in xrange(timeout/5):
+            status = self.get_sync_buffer_status()
+            if status == must:
+                return True
+            msleep(5)
+
+    def send_smpl_data(self, data, wait=False, timeout=1000):
+        if len(data) != BM_SYNC_DATA_LENGTH:
+            data = data[:BM_SYNC_DATA_LENGTH] + [0x00 for x in range(BM_SYNC_DATA_LENGTH-len(data))]
+        snd = self.send_read(BM_SYNC_SEND_COMMAND, data)
+#        return snd
+        if wait:
+            for i in xrange(timeout/30):
+                msleep(30)
+                status = self.get_sync_buffer_status()
+                if status:
+                   return ""#self.read_sync_data()
+            #buf = self.send_get_smpl_data()
+            #if buf != '\xff\x06\x07\xff\x00\x00\x00':
+            #    print "OH read", repr(buf)
+#           #     return
+            #elif buf[4] == SYNC_AP_CMD_NOOP and buf[5] == SYNC_DATA_SENT:
+            #    print "JUHU"
+            #    return True
+            #else:
+            #    self.send_read(BM_SYNC_SEND_COMMAND, data)
+        
+        #status = self.status()
+        #print "status", repr(status)
+
+    def read_sync_data(self, data=None, timeout=3000):
+        if not data:
+            data = []
+        if len(data) != BM_SYNC_DATA_LENGTH:
+            data = data[:BM_SYNC_DATA_LENGTH] + [0x00 for x in range(BM_SYNC_DATA_LENGTH-len(data))]
+        self.send(BM_SYNC_READ_BUFFER)
+        red = self.read(BM_SYNC_DATA_LENGTH+3)
+        print "read sync", self.dstr(red)
+        return red
 
     def status(self):
         return self.send_read(BM_GET_STATUS, [0x00])
-
 
     @staticmethod
     def get_smpl_data(data, add=1):
@@ -248,7 +313,6 @@ class CommandDispatcher(Simpliciti):
             print res
 
     def handle_smpl_data(self, data):
-        #print "handle", repr(data)
         if self.debug > 2:
             print "got", repr(data)
         if len(data) < 4:
@@ -257,6 +321,7 @@ class CommandDispatcher(Simpliciti):
             if self.debug > 3:
                 print "got no data"
         else:
+            print "handle", self.dstr(data)
             if hasattr(self, "smpl_%s" %"0x%0.2X" %ord(data[3])):
                 getattr(self, "smpl_%s" %"0x%0.2X" %ord(data[3]))(data)
             else:
@@ -271,6 +336,78 @@ class CommandDispatcher(Simpliciti):
         if self.debug:
             print "unhandled", " ".join(["0x%0.2X" %ord(a) for a in self.get_smpl_data(data, 0)])
 
+    """
+    kinda messy
+
+    Here's how this works.
+    A packet for the watch sync looks like this:
+    FF 31 16 03 94 34 01 07 DA 01 17 06 1E 00 00 00 00 00 00 00 00 00
+    You have the first four bytes which we're just going to ignore.
+    The 5th byte represents the hour you want to sync to.
+    The 6th byte represents the minute you want to sync to.
+    The 7th byte represents the second you want to sync to.
+    The 9th byte represents the year you want to sync to.
+    The 10th byte represents the month you want to sync to.
+    The 11th byte represents the day you want to sync to.
+    THe 14th and 15th bytes represent the temperature in celcius.
+    The 16th and 17th bytes represent the altitude in meters.
+
+    It also stores some of these values in some unusual (to me) ways.
+
+    For hour, the value 0x80 needs to be added to the 24hr representation of the desired
+    hour to sync to.
+
+    For year the value 0x700 needs to be subtracted from the desired year to sync to.
+
+    For temperature, the temperature (in celcius) needs to be multiplied by 0x0A.
+
+    Caveat emptor: There is no error checking implemented to check for valid ranges.
+    """
+    #{'alarm_hour': 6, 'hour': 4, 'tempCelcius': 272, 'metric': 1, 'month': 8, 'second': 56, 'year': 2009, 'alarm_minute': 30, 'altMeters': 485, 'day': 1, 'minute': 50}
+    def build_sync_data(self, kwargs):
+        adjHour = kwargs['metric'] << 7 | kwargs['hour']
+        adjYear = struct.pack('>H', kwargs['year'])
+        adjTempCelcius = kwargs['temp_celcius'] # * 0x0A
+        cmd = [SYNC_AP_CMD_SET_WATCH,
+               adjHour,
+               kwargs['minute'],
+               kwargs['second'],
+               ord(adjYear[0]),ord(adjYear[1]),
+               kwargs['month'],
+               kwargs['day'],
+               kwargs['alarm_hour'],
+               kwargs['alarm_minute']]
+
+        hexCelcius = hex(adjTempCelcius)[2:].zfill(4)
+        hexMeters = hex(kwargs['alt_meters'])[2:].zfill(4)
+
+        for i in splitIntoNPieces(hexCelcius,2):
+            cmd.append(int(i,16))
+        for i in splitIntoNPieces(hexMeters,2):
+            cmd.append(int(i,16))
+    
+        for i in xrange(0,3):
+            cmd.append(0)
+   
+        return cmd
+
+    def parse_sync_data(self, data, offset=3):
+        if len(data) >= offset+13 and ord(data[offset]) == 0x03:
+            # status data
+            rv = {}
+            # FIXME: fix am/pm code in hours
+            rv["metric"] = ord(data[offset+1]) >> 7
+            rv["hour"] = ord(data[offset+1])&0x7F
+            rv["minute"] = ord(data[offset+2])
+            rv["second"] = ord(data[offset+3])
+            rv["year"] = struct.unpack('>H', array.array('B', [ord(data[offset+4]),ord(data[offset+5])]).tostring())[0]
+            rv["month"] = ord(data[offset+6])
+            rv["day"] = ord(data[offset+7])
+            rv["alarm_hour"] = ord(data[offset+8])
+            rv["alarm_minute"] = ord(data[offset+9])
+            rv["temp_celcius"] = struct.unpack('>H', array.array('B', [ord(data[offset+10]),ord(data[offset+11])]).tostring())[0]
+            rv["alt_meters"] = struct.unpack('>H', array.array('B', [ord(data[offset+12]),ord(data[offset+13])]).tostring())[0]
+            return rv
 
 class ProtocolView(CommandDispatcher):
 

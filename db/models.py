@@ -4,21 +4,23 @@ from django.contrib.auth.models import User
 from django.contrib import admin
 from django.conf import settings
 from django.utils.dateformat import time_format, format
+from . import alarm
 import struct
 import logging
 import datetime
 import time
+import random
 # Create your models here.
 
 DETECTOR_TYPES = (
  (0, "OpenChronos"),
 )
 
-SESSION_TYPES = (
- (0, "Normal Sleep"),
- (1, "Powernap"),
- (2, "One REM"),
-)
+# SESSION_TYPES = (
+#  (0, "Normal Sleep"),
+#  (1, "Powernap"),
+#  (2, "One REM"),
+# )
 
 RF_ID_BIT_LENGHT = 3
 
@@ -42,7 +44,7 @@ class WakeupTime(models.Model):
     user = models.ForeignKey(User, null=False)
     # fixme choices etc
     weekday = models.IntegerField("Weekday", null=True) 
-    session_typ = models.IntegerField("Type", default=0, choices=SESSION_TYPES)
+    session_typ = models.IntegerField("Type", default=0, choices=alarm.manager.choices_programs)
     wakeup = models.TimeField("Wakeup", null=False)
 
 
@@ -58,13 +60,31 @@ class SessionManager(models.Manager):
         return self.filter(stop__gt=start, closed=False, **kwargs)
 
     def get_new_rf_id(self):
-        id_s = xrange(1, (2**(RF_ID_BIT_LENGHT+1)))
+        id_s = range(1, (2**(RF_ID_BIT_LENGHT+1)))
         now = datetime.datetime.now()
         start = now - datetime.timedelta(seconds=settings.CLOCK_SESSION_TIMEOUT)
         actives = self.filter(stop__gt=start).values_list("rf_id", flat=True)
+        # return a "random" id
+        random.shuffle(id_s)
         for x in id_s:
             if x not in actives:
                 return x
+
+    def get_new_session(self, user):
+        """
+        Return a new Session for the user. If the user created a new session it
+        will be returned
+        """
+        rv = self.filter(user=user, new=True).order_by("id")
+        if len(rv):
+            rv = rv[0]
+            # set the new_ flag to False so it will not be returned again
+            rv.new_ = False
+            rv.save()
+            return rv
+        else:
+            # create a new session
+            pass
 
 class Session(models.Model):
     """
@@ -72,14 +92,15 @@ class Session(models.Model):
     """
     start = models.DateTimeField("Start", null=False, auto_now_add=True, editable=False)
     stop = models.DateTimeField("Stop", null=False, auto_now_add=True, editable=False)
-    user = models.ForeignKey(User, null=True, blank=True)
-    detector = models.ForeignKey(Detector, null=True, blank=True)
-    typ = models.IntegerField("Type", default=0, choices=SESSION_TYPES)
-    wakeup = models.DateTimeField("Wakeup", null=True, blank=True)
-    rating = models.IntegerField("Rating", null=True, blank=True)
+    user = models.ForeignKey(User, null=True)
+    detector = models.ForeignKey(Detector, null=True)
+    program = models.IntegerField("Program", default=0, choices=alarm.manager.choices_programs)
+    wakeup = models.DateTimeField("Wakeup", null=True)
+    rating = models.IntegerField("Rating", null=True)
     deleted = models.BooleanField("Deleted", default=False)
-    rf_id = models.IntegerField("RF Id", null=True, blank=True)
+    rf_id = models.IntegerField("RF Id", null=True)
     closed = models.BooleanField("Session has ended", default=False)
+    new = models.BooleanField("Session has not yet run", default=False)
 
     objects = SessionManager()
     # Do we need this ?
@@ -112,12 +133,8 @@ class Session(models.Model):
         entries = self.entry_set.all().count()
         return u"Session from %s %s (%s:%0.2d) (%s Entries)" %(self.user, format(self.start, settings.DATETIME_FORMAT), length[0], length[1], entries)
 
-    @property
-    def entries_count(self):
-        return self.entry_set.all().count()
-
-
     def merge(self, source):
+        # FIXME: add a zero datapoint maybe if the time 
         source.entry_set.all().update(session=self)
         source.learndata_set.all().delete()
 
@@ -174,11 +191,6 @@ class LearnData(models.Model):
                                 help_text="When sleep stopped", null=True)
     learned = models.BooleanField(default=False)
 
-    @property
-    def placed(self):
-        """Did the user set any points"""
-        return any((self.wake, self.lights, self.start, self.stop))
-
 
 SIMPLICITI_PHASE_CLOCK_START_RESPONSE = 0x54
 
@@ -193,6 +205,7 @@ class DBWriter(ez_chronos.CommandDispatcher):
         super(DBWriter, self).__init__(*args, **kwargs)
         self.last_msg = {}
         self.session = {}
+        self.syncrun = 0
 
     def smpl_0x01(self, data):
         # acceleration data
@@ -272,11 +285,11 @@ class DBWriter(ez_chronos.CommandDispatcher):
 
         if not active_session:
             rf_id = Session.objects.get_new_rf_id()
-            typ = ord(mdata[2])
-            if not any((True for x in SESSION_TYPES if x[0] == typ)):
-                typ = 0
+            program = ord(mdata[2])
+            if not alarm.manager.is_valid_program_id(program):
+                program = 0
             active_session = Session(start=now, stop=now, detector=device, user=device.default_user,
-                              rf_id=rf_id, typ=typ)
+                              rf_id=rf_id, program=program)
             active_session.save()
 
         logging.info("Send Session ID: %s" %(active_session.rf_id))
@@ -286,5 +299,44 @@ class DBWriter(ez_chronos.CommandDispatcher):
         # we shall not do anything until the clock reads out the 
         # session data
         time.sleep(0.030)
-        
-        
+
+    def smpl_0x10(self, data):
+        """
+        Start sync mode
+        """
+        logging.debug("start sync mode")
+        # taken from http://pastebin.com/f62344dbd
+        # empty buffer
+        self.read_sync_data()
+        # read old data
+        for x in xrange(1000):
+            self.send_smpl_data([ez_chronos.SYNC_AP_CMD_GET_STATUS], wait=False)
+            time.sleep(0.020)
+            if self.get_sync_buffer_status():
+                rcv = self.read_sync_data()
+                cdata = self.parse_sync_data(rcv)
+                if cdata:
+                    break
+        else:
+            print "no data for next step"
+            return
+        ctime = datetime.datetime.now()
+        #{'alarm_hour': 6, 'hour': 4, 'tempCelcius': 272, 'metric': 1, 'month': 8, 'second': 56, 'year': 2009, 'alarm_minute': 30, 'altMeters': 485, 'day': 1, 'minute': 50}
+        if not cdata:
+            return
+        cdata['hour'] = ctime.hour
+        cdata['minute'] = ctime.minute
+        cdata['second'] = ctime.second
+        cdata['day'] = ctime.day
+        cdata['month'] = ctime.month
+        cdata['year'] = ctime.year
+        if settings.CLOCK_ALTITUDE is not None:
+            cdata['alt_meters'] = settings.CLOCK_ALTITUDE
+
+        print "send", cdata, self.build_sync_data(cdata)
+
+        for x in xrange(10):
+            self.send_smpl_data(self.build_sync_data(cdata))
+            time.sleep(0.100)
+
+        self.send_smpl_data([ez_chronos.SYNC_AP_CMD_EXIT])

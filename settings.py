@@ -126,6 +126,9 @@ CLOCK_SESSION_TIMEOUT = 60*5
 
 PISTON_STREAM_OUTPUT = True
 
+# hight in meters above normal hight
+CLOCK_ALTITUDE = None
+
 CHUMBY_URLS = {
   'default' : '<embed width="800" height="480" quality="high" bgcolor="#FFFFFF" wmode="transparent" name="virtualchumby" type="application/x-shockwave-flash" src="http://www.chumby.com/virtualchumby_noskin.swf" FlashVars="_chumby_profile_url=http%3A%2F%2Fwww.chumby.com%2Fxml%2Fvirtualprofiles%2FE8E34C1E-726B-11DF-BA50-001B24F07EF4&amp;baseURL=http%3A%2F%2Fwww.chumby.com" pluginspage="http://www.macromedia.com/go/getflashplayer"></embed>'
 }

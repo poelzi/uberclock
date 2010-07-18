@@ -21,7 +21,7 @@
     {% ifchanged session.week%}<h3>Week {{ session.start|date:"W" }}</h3>{% endifchanged %}
 {% endif %}
 <a href="/stats/{{ session.id }}/" class="stats_detail">{{ session.start|date:"DATETIME_FORMAT" }} - {{ session.stop|date:"DATETIME_FORMAT" }} ({{session.length|timelengh}})</a>
-    {% if session.learndata.placed %}<img src="/static/webclock/generic/marker.png" />{% endif %}
+    {% if session.learndata.placed %}<img src="/static/webclock/generic/marker.png" alt="Marked" title="Marker are set" />{% endif %}
     <br/>
 {% endfor %}
 
