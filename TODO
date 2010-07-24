@@ -1,3 +1,5 @@
 • fix hero weather proxy
 • make it translatable
 • unittests
+• allow the uberclockd to act as wireless update server
+• add command line tool to control server via rpc

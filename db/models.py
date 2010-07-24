@@ -24,6 +24,17 @@ DETECTOR_TYPES = (
 
 RF_ID_BIT_LENGHT = 3
 
+def get_user_or_default(user=None):
+    if user and isinstance(user, User):
+        return user
+    try:
+        return User.objects.get(username=user)
+    except User.DoesNotExist:
+        try:
+            return User.objects.get(username=settings.DEFAULT_USER)
+        except User.DoesNotExist:
+            return None
+
 class Detector(models.Model):
     """
     Device which messures the sleep state
@@ -35,6 +46,58 @@ class Detector(models.Model):
 
     def __repr__(self):
         return '<Detector %s >' %self.ident
+
+class UserProgramManager(models.Manager):
+    def get_program_for_user(self, user, id_):
+        obj, created = self.get_or_create(user = user, users_id = id_, 
+                                          defaults = {
+                                            "user":user, "users_id":id_,
+                                            "alarm_key":settings.DEFAULT_ALARM
+                                          })
+        if created:
+            obj.save()
+        return obj
+
+    def get_users_default(self, user):
+        res = self.filter(user=user).order_by("-default", "users_id")
+        if not res:
+            return None
+        return res[0]
+
+class UserProgram(models.Model):
+    """
+    Maps a alarm program to user and his choosen id
+    """
+    user =  models.ForeignKey(User, null=True, db_index=True)
+    users_id = models.IntegerField(null=False, db_index=True)
+    default = models.BooleanField(default=False)
+    alarm_key = models.CharField(null=False, max_length=30, choices=alarm.manager.choices_programs)
+    rname = models.CharField(max_length=30, null=True, blank=True)
+    short_name = models.CharField(max_length=5, null=True, blank=True)
+
+    settings = models.TextField()
+
+    objects = UserProgramManager()
+
+    class Meta:
+        unique_together = (("user", "users_id"),)
+
+    def _get_name(self):
+        if self.rname:
+            return self.rname
+        return alarm.manager.get_program(self.alarm_key).name
+
+    def _set_name(self, val):
+        self.rname = val
+
+    name = property(_get_name, _set_name)
+
+    @property
+    def program_class(self):
+        return alarm.manager.get_program(self.alarm_key)
+
+    def __unicode__(self):
+        return u"%s of %s" %(self.name, self.user)
 
 class WakeupTime(models.Model):
     """
@@ -94,7 +157,7 @@ class Session(models.Model):
     stop = models.DateTimeField("Stop", null=False, auto_now_add=True, editable=False)
     user = models.ForeignKey(User, null=True)
     detector = models.ForeignKey(Detector, null=True)
-    program = models.IntegerField("Program", default=0, choices=alarm.manager.choices_programs)
+    program = models.ForeignKey(UserProgram, null=True)
     wakeup = models.DateTimeField("Wakeup", null=True)
     rating = models.IntegerField("Rating", null=True)
     deleted = models.BooleanField("Deleted", default=False)
@@ -103,12 +166,37 @@ class Session(models.Model):
     new = models.BooleanField("Session has not yet run", default=False)
 
     objects = SessionManager()
+
     # Do we need this ?
     #alone = models.BooleanField("Alone", null=True, default=True, help_text="Sleeping with someone else in the bed")
+
+#     def __init__(self, *args, **kwargs):
+#         if not "user" in kwargs:
+#             if "detector" in kwargs:
+#                 kwargs["user"] = get_user_or_default(kwargs["device"].default_user)
+#             else:
+#                 kwargs["user"] = 
+#         if not "program" in kwargs:
+#             self.kwargs["program"] = UserProgram.objects.get_users_default(kwargs["user"])
+#
+#         return super(Session, self).__init__(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         super(Session, self).save(*args, **kwargs)
         self.learndata
+
+    @property
+    def get_user(self):
+        if self.user:
+            return self.user
+        if self.detector and self.detector.default_user:
+            # we set self.user here, so changes to a detector will not change 
+            # old sessions
+            self.user = self.detector.default_user
+            return self.user
+        # fallback to default user
+        self.user = get_user_or_default()
+        return self.user
 
     @property
     def learndata(self):
@@ -246,8 +334,11 @@ class DBWriter(ez_chronos.CommandDispatcher):
         try:
             session = Session.objects.get_active_session(rf_id)
         except Session.DoesNotExist:
-            logging.warning("Session id sent which is not active. Creating a new Session")
-            session = Session(start=now, stop=now, rf_id=rf_id)
+            logging.warning("Session id %s sent which is not active. Creating a new Session" %rf_id)
+            user=get_user_or_default(None)
+            program=UserProgram.objects.get_users_default(user)
+            session = Session(start=now, stop=now, rf_id=rf_id, 
+                              user=user, program=program)
             session.save()
 
         logging.debug("%s S:%2d C:%2d %6d %s" %(session.id, rf_id, counter, var, "#"*max(min((var/500), 80),1)))
@@ -264,9 +355,11 @@ class DBWriter(ez_chronos.CommandDispatcher):
         print "04", repr(data)
         mdata = self.get_smpl_data(data)
         ident = "0x%02x%02x" %(ord(mdata[0]), ord(mdata[1]))
-        device, created = Detector.objects.get_or_create(ident=ident, defaults={"name": "eZ430 OpenChronos",
+        device, created = Detector.objects.get_or_create(ident=ident, 
+                                                            defaults={"name": "eZ430 OpenChronos",
                                                                       "ident": ident,
                                                                       "typ": DETECTOR_TYPES[0][0],
+                                                                      "user": get_user_or_default(None),
                                                                       })
         if created:
             device.save()
@@ -283,22 +376,31 @@ class DBWriter(ez_chronos.CommandDispatcher):
                 # we have an active session running
                 active_session = session
 
+        # find program
+        program_id = ord(mdata[2])
+        user = get_user_or_default(device.default_user)
+        program = UserProgram.objects.get_program_for_user(user, program_id)
+
+
         if not active_session:
             rf_id = Session.objects.get_new_rf_id()
-            program = ord(mdata[2])
-            if not alarm.manager.is_valid_program_id(program):
-                program = 0
-            active_session = Session(start=now, stop=now, detector=device, user=device.default_user,
-                              rf_id=rf_id, program=program)
+
+            active_session = Session(start=now, stop=now, detector=device,
+                                     rf_id=rf_id, 
+                                     user=user,
+                                     program=program)
             active_session.save()
 
-        logging.info("Send Session ID: %s" %(active_session.rf_id))
+
+        logging.info("Send Session ID: %s (user:%s program:%s)" %(active_session.rf_id, active_session.user, active_session.program))
 
         data = [SIMPLICITI_PHASE_CLOCK_START_RESPONSE, active_session.rf_id]
         self.send_smpl_data(data)
         # we shall not do anything until the clock reads out the 
         # session data
-        time.sleep(0.030)
+        for x in xrange(10):
+            self.send_smpl_data(data, wait=False)
+            time.sleep(0.050)
 
     def smpl_0x10(self, data):
         """
@@ -309,7 +411,7 @@ class DBWriter(ez_chronos.CommandDispatcher):
         # empty buffer
         self.read_sync_data()
         # read old data
-        for x in xrange(1000):
+        for x in xrange(100):
             self.send_smpl_data([ez_chronos.SYNC_AP_CMD_GET_STATUS], wait=False)
             time.sleep(0.020)
             if self.get_sync_buffer_status():

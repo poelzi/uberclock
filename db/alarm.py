@@ -13,12 +13,12 @@ class Manager(object):
         """
         Register a new alarm clock program
         """
-        if not program.nid:
-            raise ValueError, "program id (nid) is not set"
-        if program.nid in self.programs and self.programs[program.nid] != program:
-            raise ValueError, "program id (nid) already exists"
+        if not program.key:
+            raise ValueError, "program id (key) is not set"
+        if program.key in self.programs and self.programs[program.key] != program:
+            raise ValueError, "program id (key) already exists"
 
-        self.programs[program.nid] = program
+        self.programs[program.key] = program
 
     def list_programs(self):
         """
@@ -32,14 +32,17 @@ class Manager(object):
         Return a choices list used in django
         """
         rv = []
-        for program in self.programs.iteritems():
-            rv.append((program.nid, program))
+        for key,program in self.programs.iteritems():
+            rv.append((key, program))
         return rv
 
-    def is_valid_program_id(self, nid):
+    def is_valid_program(self, key):
         for program in self.programs.iteritems():
-            if program.nid == nid:
+            if program.key == key:
                 return True
+
+    def get_program(self, key):
+        return self.programs.get(key, self.programs["basic"] )
 
     def create_session(self, user_name, program):
         pass
@@ -85,8 +88,9 @@ class BaseAlarm(object):
     Base Class for all alarm logics
     """
     # numeric id. must be unique and change never
-    nid = None
-    title = None
+    key = None
+    name = None
+    short_name = None
 
     def __init__(self, manager, session):
         self.manager = manager
@@ -110,3 +114,10 @@ class BaseAlarm(object):
         Feed one new Entry into the Alarm program.
         """
         pass
+
+class BasicAlarm(BaseAlarm):
+    key = "basic"
+    name = "Basic Alarm"
+    short_name = "basic"
+
+manager.register(BasicAlarm)

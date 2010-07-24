@@ -1,6 +1,11 @@
 # Django settings for uberclock project.
 
-import os.path
+import os, os.path
+
+CONFIG_PATH = os.path.expanduser("~/.uberclock")
+
+if not os.path.exists(CONFIG_PATH):
+    os.mkdir(CONFIG_PATH)
 
 DEVELOPMENT_MODE = False
 DEBUG = True
@@ -122,6 +127,9 @@ EZ_SERIAL = "/dev/ttyACM0"
 SERVER_LISTEN = '0.0.0.0'
 SERVER_PORT = 8000
 
+DEFAULT_USER = 'user'
+DEFAULT_ALARM = 'basic'
+
 CLOCK_SESSION_TIMEOUT = 60*5
 
 PISTON_STREAM_OUTPUT = True
@@ -133,11 +141,12 @@ CHUMBY_URLS = {
   'default' : '<embed width="800" height="480" quality="high" bgcolor="#FFFFFF" wmode="transparent" name="virtualchumby" type="application/x-shockwave-flash" src="http://www.chumby.com/virtualchumby_noskin.swf" FlashVars="_chumby_profile_url=http%3A%2F%2Fwww.chumby.com%2Fxml%2Fvirtualprofiles%2FE8E34C1E-726B-11DF-BA50-001B24F07EF4&amp;baseURL=http%3A%2F%2Fwww.chumby.com" pluginspage="http://www.macromedia.com/go/getflashplayer"></embed>'
 }
 
-import os
 
-if not os.path.exists(os.path.expanduser("~/.uberclock")):
-    os.mkdir(os.path.expanduser("~/.uberclock"))
+# load user config file
+if os.path.exists(os.path.join(CONFIG_PATH, "settings.py")):
+    execfile(os.path.join(CONFIG_PATH, "settings.py"), globals())
 
+# load current dir config file
 try:
     from settings_local import *
 except ImportError:

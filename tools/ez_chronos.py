@@ -107,7 +107,7 @@ class Simpliciti(object):
         #self._nullread()
         self.debug = False
         self.sync()
-        print self.dstr(self.send_read(BM_GET_PRODUCT_ID, [0x00, 0x00, 0x00, 0x00]))
+        #self.send_smpl_data([], wait=False)
     #def 
 
     #def _nullread(self):
@@ -158,7 +158,7 @@ class Simpliciti(object):
             res = array.array('B', [0xFF, cmd_, ln])
         self.last_cmd = (cmd_, ln)
         if self.debug:
-            if self.debug >= 2:
+            if self.debug >= 3:
                 print "send:" + self.dstr(res.tostring())
             else:
                 if res.tostring() not in ('\xff\x08\x07\x00\x00\x00\x00', '\xff\x32\x04\x00'):
@@ -217,6 +217,11 @@ class Simpliciti(object):
 
     def start_ap(self):
         self.send_read(BM_START_SIMPLICITI)
+        for i in xrange(10):
+            res = self.send_read(BM_GET_SIMPLICITIDATA, [0x00, 0x00, 0x00, 0x00])
+            print self.dstr(res)
+            res = self.send_read(BM_GET_STATUS, [0x00])
+            print self.dstr(res)
 
     def stop_ap(self):
         #The start access point command needs to come before the stop access point command
@@ -321,7 +326,7 @@ class CommandDispatcher(Simpliciti):
             if self.debug > 3:
                 print "got no data"
         else:
-            if self.debug >= 2:
+            if self.debug >= 1:
                 print "handle", self.dstr(data)
             if hasattr(self, "smpl_%s" %"0x%0.2X" %ord(data[3])):
                 getattr(self, "smpl_%s" %"0x%0.2X" %ord(data[3]))(data)
