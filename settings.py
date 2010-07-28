@@ -2,7 +2,7 @@
 
 import os, os.path
 
-CONFIG_PATH = os.path.expanduser("~/.uberclock")
+CONFIG_PATH = os.path.expanduser("~/.config/uberclock")
 
 if not os.path.exists(CONFIG_PATH):
     os.mkdir(CONFIG_PATH)
@@ -20,7 +20,7 @@ MANAGERS = ADMINS
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3', # Add 'postgresql_psycopg2', 'postgresql', 'mysql', 'sqlite3' or 'oracle'.
-        'NAME': os.path.expanduser('~/.uberclock/db.sqlite'),                      # Or path to database file if using sqlite3.
+        'NAME': os.path.join(CONFIG_PATH, "db.sqlite"),                      # Or path to database file if using sqlite3.
         'USER': '',                      # Not used with sqlite3.
         'PASSWORD': '',                  # Not used with sqlite3.
         'HOST': '',                      # Set to empty string for localhost. Not used with sqlite3.
@@ -136,6 +136,9 @@ PISTON_STREAM_OUTPUT = True
 
 # hight in meters above normal hight
 CLOCK_ALTITUDE = None
+
+# 5 minutes snooze time
+DEFAULT_SNOOZE_TIME = 5 * 60
 
 CHUMBY_URLS = {
   'default' : '<embed width="800" height="480" quality="high" bgcolor="#FFFFFF" wmode="transparent" name="virtualchumby" type="application/x-shockwave-flash" src="http://www.chumby.com/virtualchumby_noskin.swf" FlashVars="_chumby_profile_url=http%3A%2F%2Fwww.chumby.com%2Fxml%2Fvirtualprofiles%2FE8E34C1E-726B-11DF-BA50-001B24F07EF4&amp;baseURL=http%3A%2F%2Fwww.chumby.com" pluginspage="http://www.macromedia.com/go/getflashplayer"></embed>'

@@ -1,5 +1,8 @@
 from django.db import models
+
 from uberclock.tools import ez_chronos
+from uberclock.tools.date import time_to_next_datetime
+
 from django.contrib.auth.models import User
 from django.contrib import admin
 from django.conf import settings
@@ -10,6 +13,12 @@ import logging
 import datetime
 import time
 import random
+import base64
+#import simplejson
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 # Create your models here.
 
 DETECTOR_TYPES = (
@@ -67,15 +76,21 @@ class UserProgramManager(models.Manager):
 class UserProgram(models.Model):
     """
     Maps a alarm program to user and his choosen id
+
+    Object can be used to save settings that are serialsable by simplejson
     """
     user =  models.ForeignKey(User, null=True, db_index=True)
     users_id = models.IntegerField(null=False, db_index=True)
     default = models.BooleanField(default=False)
     alarm_key = models.CharField(null=False, max_length=30, choices=alarm.manager.choices_programs)
-    rname = models.CharField(max_length=30, null=True, blank=True)
+    rname = models.CharField("name", max_length=30, null=True, blank=True)
     short_name = models.CharField(max_length=5, null=True, blank=True)
 
-    settings = models.TextField()
+    default_wakeup = models.TimeField("Wakeup", null=True)
+    default_sleep_time = models.IntegerField(null=True, help_text="Minutes of wanted sleep")
+    default_window = models.IntegerField(null=True, help_text="Window of Minutes how many minutes before wakeup can be alarmed")
+
+    settings = models.TextField(default=None, editable=False, null=True)
 
     objects = UserProgramManager()
 
@@ -92,9 +107,59 @@ class UserProgram(models.Model):
 
     name = property(_get_name, _set_name)
 
+    def get_var(self, name, *args):
+        if not hasattr(self, "_settings"):
+            if self.settings:
+                try:
+                    #self._settings = simplejson.loads(self.settings)
+                    self._settings = pickle.loads(base64.b64decode(self.settings))
+                except Exception, e:
+                    logging.warning("could not unpickle settings: %s" %e)
+                    print self.settings
+                    self._settings = {}
+            else:
+                self._settings = {}
+
+        if name and len(args):
+            return self._settings.get(name, args[0])
+        elif name:
+            return self._settings.get(name)
+
+        if not self.settings or not isinstance(self.settings, dict):
+            self.settings = {}
+
+    def set_var(self, name, value):
+        if not hasattr(self, "_settings"):
+            self.get_var(None)
+        self._settings[name] = value
+
+    def del_var(self, name):
+        if not hasattr(self, "_settings"):
+            self.get_var(None)
+        del self._settings[name]
+
+
+    def save(self, *args, **kwargs):
+        if hasattr(self, "_settings"):
+            #self.settings = simplejson.dumps(self._settings, ensure_ascii=False)
+            self.settings = base64.b64encode(pickle.dumps(self._settings))
+        return super(UserProgram, self).save(*args, **kwargs)
+
     @property
     def program_class(self):
         return alarm.manager.get_program(self.alarm_key)
+
+    def set_program(self, program):
+        if program:
+            self.alarm_key = program.key
+        else:
+            self.alarm_key = None
+
+    def get_program(self, session):
+        if hasattr(self, "_program") and self._program.key == self.alarm_key:
+            return self._program
+        self._program = self.program_class(alarm.manager, session)
+        return self._program
 
     def __unicode__(self):
         return u"%s of %s" %(self.name, self.user)
@@ -149,6 +214,21 @@ class SessionManager(models.Manager):
             # create a new session
             pass
 
+    def cleanup_sessions(self):
+        """
+        Clean up session garbage
+        """
+        self.delete_empty_sessions()
+
+    def delete_empty_sessions(self):
+        # delete empty sessions older then one day
+        datelimit = datetime.datetime.now() - datetime.timedelta(days=1)
+        for session in Session.objects.annotate(entry_count=models.Count('entry')).filter(entry_count=0, stop__lt=datelimit):
+            logging.info("delete %s" %session)
+            session.learndata.delete()
+            session.delete()
+
+
 class Session(models.Model):
     """
     One Sleep Session
@@ -159,6 +239,9 @@ class Session(models.Model):
     detector = models.ForeignKey(Detector, null=True)
     program = models.ForeignKey(UserProgram, null=True)
     wakeup = models.DateTimeField("Wakeup", null=True)
+    #FIXME messure real slept length
+    sleep_time = models.IntegerField(null=True, help_text="Minutes of wanted sleep")
+    window = models.IntegerField(null=True, help_text="Window of Minutes how many minutes before wakeup can be alarmed")
     rating = models.IntegerField("Rating", null=True)
     deleted = models.BooleanField("Deleted", default=False)
     rf_id = models.IntegerField("RF Id", null=True)
@@ -167,19 +250,54 @@ class Session(models.Model):
 
     objects = SessionManager()
 
-    # Do we need this ?
-    #alone = models.BooleanField("Alone", null=True, default=True, help_text="Sleeping with someone else in the bed")
 
-#     def __init__(self, *args, **kwargs):
-#         if not "user" in kwargs:
-#             if "detector" in kwargs:
-#                 kwargs["user"] = get_user_or_default(kwargs["device"].default_user)
-#             else:
-#                 kwargs["user"] = 
-#         if not "program" in kwargs:
-#             self.kwargs["program"] = UserProgram.objects.get_users_default(kwargs["user"])
-#
-#         return super(Session, self).__init__(*args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        # copy default values from program
+        if "program" in kwargs:
+            prog = kwargs["program"]
+            if not "wakeup" in kwargs:
+                kwargs["wakeup"] = time_to_next_datetime(prog.default_wakeup)
+            if not "sleep_time" in kwargs:
+                kwargs["sleep_time"] = prog.default_sleep_time
+            if not "window" in kwargs:
+                kwargs["window"] = prog.default_window
+        return super(Session, self).__init__(*args, **kwargs)
+
+
+    def action_in_window(self, action, dt=None): 
+        """
+        Checks if a action is allowed to run
+        """
+        if self.closed:
+            return False
+        if self.wakeup:
+            if not dt:
+                dt = datetime.datetime.now()
+            if dt > self.wakeup:
+                return True
+            elif self.window:
+                if action == alarm.ACTIONS.LIGHTS:
+                    # lights get an aditional larger timedelta
+                    if dt >= self.wakeup - datetime.timedelta(minutes=self.window+15):
+                        return True
+                else:
+                    if dt >= self.wakeup - datetime.timedelta(minutes=self.window):
+                        return True
+                return False
+
+
+    def get_param(self, name):
+        """
+        Returns paramenter of the Sessions alarm
+        """
+        # get the value of the program first
+        if name in ["wakeup", "sleep_time", "window"]:
+            if getattr(self, name):
+                return getattr(self, name)
+        # lookup default values of the program
+        if self.program:
+            return self.program.get_var(name)
+
 
     def save(self, *args, **kwargs):
         super(Session, self).save(*args, **kwargs)
@@ -222,7 +340,7 @@ class Session(models.Model):
         return u"Session from %s %s (%s:%0.2d) (%s Entries)" %(self.user, format(self.start, settings.DATETIME_FORMAT), length[0], length[1], entries)
 
     def merge(self, source):
-        # FIXME: add a zero datapoint maybe if the time 
+        # FIXME: add a zero datapoint if the time between entries is to long
         source.entry_set.all().update(session=self)
         source.learndata_set.all().delete()
 
@@ -245,6 +363,8 @@ class Session(models.Model):
 
     @property
     def length(self):
+        if self.start > self.stop:
+            return (0, 0, 0)
         s = (self.stop - self.start).seconds
         hours, remainder = divmod(s, 3600)
         minutes, seconds = divmod(remainder, 60)
@@ -257,11 +377,22 @@ class Entry(models.Model):
     counter = models.IntegerField(max_length=3, null=True)
     session = models.ForeignKey(Session, null=True, db_index=True)
 
+    def save(self, *args, **kwargs):
+        super(Entry, self).save(*args, **kwargs)
+        # update the session new flag to false if any entry is saved to it.
+        # it is used then
+        if self.session and self.session.new:
+            self.session = False
+            self.session.save()
+
     def __repr__(self):
         return "<Entry %s %d>" %(self.date, self.value)
 
     def __unicode__(self):
-        return u"Entry at %s: %s" %(self.date, time_format(self.date, settings.TIME_FORMAT))
+        return u"Entry at %s: %s" %(format(self.date, settings.DATETIME_FORMAT), self.value)
+
+    class Meta:
+        ordering = ('date',)
 
 
 class LearnData(models.Model):
@@ -278,6 +409,18 @@ class LearnData(models.Model):
     stop = models.ForeignKey(Entry, related_name="learn_stop",
                                 help_text="When sleep stopped", null=True)
     learned = models.BooleanField(default=False)
+
+    @property
+    def placed(self):
+        if any([self.lights, self.wake, self.start, self.stop]):
+            return True
+        return False
+
+
+def cleanup_db():
+    # cleanup sessions
+    Session.objects.cleanup_sessions()
+
 
 
 SIMPLICITI_PHASE_CLOCK_START_RESPONSE = 0x54
