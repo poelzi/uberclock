@@ -174,9 +174,7 @@ class Simpliciti(object):
         #self.stream.read()
         for i in xrange(10):
             res = self.send_read(BM_GET_STATUS, [0x00])
-            print self.dstr(res)
             res = self.send_read(BM_RESET, [])
-            print self.dstr(res)
             #self.stream.read()
 
     def read(self, ln=None):
@@ -219,9 +217,7 @@ class Simpliciti(object):
         self.send_read(BM_START_SIMPLICITI)
         for i in xrange(10):
             res = self.send_read(BM_GET_SIMPLICITIDATA, [0x00, 0x00, 0x00, 0x00])
-            print self.dstr(res)
             res = self.send_read(BM_GET_STATUS, [0x00])
-            print self.dstr(res)
 
     def stop_ap(self):
         #The start access point command needs to come before the stop access point command

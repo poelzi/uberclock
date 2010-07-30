@@ -11,6 +11,18 @@ UberClock is a alarm clock that is designed for more advanced sleep.
 • django 1.2
 • django-piston
 
+== Install ==
+
+To install the database run:
+
+  ./manage.py installdb
+
+Now you have a default user named "user" with password "user".
+
+== Run ==
+To run the daemon run:
+
+  ./uberclockd
 
 == Architecture ==
 

@@ -52,7 +52,7 @@ class Command(BaseCommand):
                 continue
 
             pv = DBWriter(ser, clock=self.clock)
-            pv.debug = 1
+            pv.debug = 0
             pv.reset()
             pv.start_ap()
             try:

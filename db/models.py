@@ -572,7 +572,6 @@ class DBWriter(ez_chronos.CommandDispatcher):
         """
         Start new session
         """
-        print "04", repr(data)
         mdata = self.get_smpl_data(data)
         ident = "0x%02x%02x" %(ord(mdata[0]), ord(mdata[1]))
         device, created = Detector.objects.get_or_create(ident=ident, 
