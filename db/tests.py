@@ -12,6 +12,8 @@ import alarm
 import time, datetime
 
 class DBTest(TestCase):
+    fixtures = ['default_user.json']
+
     def test_cleanup(self):
         dt = datetime.datetime.now() - datetime.timedelta(days=2)
         # emulate an old session
@@ -52,9 +54,6 @@ class DBTest(TestCase):
         #self.assertEqual(up.settings, '{"bla": 23}')
         self.assertEqual(up.get_var("bla"), 23)
         self.assertEqual(up.get_var("wakeup"), datetime.time(7, 30))
-        
-        
-        
         up.delete()
 
     def test_session_params(self):
@@ -121,6 +120,18 @@ class DBTest(TestCase):
         session.window = 21
         self.assertEqual(session.action_in_window(alarm.ACTIONS.WAKEUP), True)
         self.assertEqual(session.action_in_window(alarm.ACTIONS.LIGHTS), True)
+
+    def test_user(self):
+        usr = get_user_or_default(None)
+        from django.contrib.auth.models import User
+        first = User.objects.all()[0]
+        #self.assertEqual(usr.username, settings.DEFAULT_USER)
+        # we need to have a user
+        self.assertTrue(usr)
+        self.assertEqual(get_user_or_default(first), first)
+        self.assertEqual(get_user_or_default(first.username), first)
+        #usr = get_user_or_default(None)
+
 
 
 class ActionTest(TestCase):

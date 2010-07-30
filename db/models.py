@@ -49,7 +49,10 @@ def get_user_or_default(user=None):
         try:
             return User.objects.get(username=settings.DEFAULT_USER)
         except User.DoesNotExist:
-            return None
+            try:
+                return User.objects.order_by('-id')[0]
+            except IndexError:
+                return None
 
 class Detector(models.Model):
     """
@@ -617,6 +620,28 @@ class DBWriter(ez_chronos.CommandDispatcher):
         for x in xrange(10):
             self.send_smpl_data(data, wait=False)
             time.sleep(0.050)
+
+    def smpl_0x05(self, data):
+        """
+        Receive sleep end packet
+        """
+        timeout=datetime.timedelta(seconds=settings.CLOCK_SESSION_TIMEOUT)
+        #FIXME: detect device
+        device = 1
+
+        mdata = self.get_smpl_data(data)
+        var = struct.unpack('H', mdata[:2])[0]
+        counter = ord(mdata[2])&COUNTER_MASK
+        rf_id = (ord(mdata[2])&RF_ID_MASK)>>5
+
+        try:
+            session = Session.objects.get_active_session(rf_id)
+            session.closed = True
+            session.save()
+            logging.warning("Session id %s closed" %rf_id)
+        except Session.DoesNotExist:
+            pass
+
 
     def smpl_0x10(self, data):
         """
