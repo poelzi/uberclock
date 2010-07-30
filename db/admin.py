@@ -5,3 +5,4 @@ from uberclock.db.models import *
 admin.site.register(Detector)
 admin.site.register(WakeupTime)
 admin.site.register(Session)
+admin.site.register(UserProgram)

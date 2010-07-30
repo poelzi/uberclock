@@ -25,6 +25,13 @@ DETECTOR_TYPES = (
  (0, "OpenChronos"),
 )
 
+class ChoicesIterator(object):
+    def __iter__(self):
+        return ((n,n) for n in settings.COMMANDS.iterkeys())
+
+ACTION_CHOICES = ChoicesIterator()
+
+
 # SESSION_TYPES = (
 #  (0, "Normal Sleep"),
 #  (1, "Powernap"),
@@ -82,13 +89,17 @@ class UserProgram(models.Model):
     user =  models.ForeignKey(User, null=True, db_index=True)
     users_id = models.IntegerField(null=False, db_index=True)
     default = models.BooleanField(default=False)
-    alarm_key = models.CharField(null=False, max_length=30, choices=alarm.manager.choices_programs)
+    alarm_key = models.CharField(null=False, max_length=30, choices=alarm.manager.choices_programs,
+                                 help_text="Alarm logic to use")
     rname = models.CharField("name", max_length=30, null=True, blank=True)
     short_name = models.CharField(max_length=5, null=True, blank=True)
 
-    default_wakeup = models.TimeField("Wakeup", null=True)
+    default_wakeup = models.TimeField("Wakeup", null=True, blank=True)
     default_sleep_time = models.IntegerField(null=True, help_text="Minutes of wanted sleep")
     default_window = models.IntegerField(null=True, help_text="Window of Minutes how many minutes before wakeup can be alarmed")
+
+    lights_action = models.CharField("Lights Action", max_length=30, default="lights", choices=ACTION_CHOICES)
+    wakeup_action = models.CharField("Wakeup Action", max_length=30, default="wakeup", choices=ACTION_CHOICES)
 
     settings = models.TextField(default=None, editable=False, null=True)
 
@@ -162,7 +173,7 @@ class UserProgram(models.Model):
         return self._program
 
     def __unicode__(self):
-        return u"%s of %s" %(self.name, self.user)
+        return u"%s (%s) of %s" %(self.name, self.users_id, self.user)
 
 class WakeupTime(models.Model):
     """
@@ -236,17 +247,20 @@ class Session(models.Model):
     start = models.DateTimeField("Start", null=False, auto_now_add=True, editable=False)
     stop = models.DateTimeField("Stop", null=False, auto_now_add=True, editable=False)
     user = models.ForeignKey(User, null=True)
-    detector = models.ForeignKey(Detector, null=True)
+    detector = models.ForeignKey(Detector, null=True, blank=True)
     program = models.ForeignKey(UserProgram, null=True)
-    wakeup = models.DateTimeField("Wakeup", null=True)
+    wakeup = models.DateTimeField("Wakeup", null=True, blank=True)
     #FIXME messure real slept length
-    sleep_time = models.IntegerField(null=True, help_text="Minutes of wanted sleep")
+    sleep_time = models.IntegerField(null=True, help_text="Minutes of wanted sleep", blank=True)
     window = models.IntegerField(null=True, help_text="Window of Minutes how many minutes before wakeup can be alarmed")
-    rating = models.IntegerField("Rating", null=True)
+    rating = models.IntegerField("Rating", null=True, blank=True)
     deleted = models.BooleanField("Deleted", default=False)
     rf_id = models.IntegerField("RF Id", null=True)
     closed = models.BooleanField("Session has ended", default=False)
     new = models.BooleanField("Session has not yet run", default=False)
+
+    lights_action = models.CharField("Lights Action", max_length=30, default="lights", choices=ACTION_CHOICES)
+    wakeup_action = models.CharField("Wakeup Action", max_length=30, default="wakeup", choices=ACTION_CHOICES)
 
     objects = SessionManager()
 
@@ -255,12 +269,18 @@ class Session(models.Model):
         # copy default values from program
         if "program" in kwargs:
             prog = kwargs["program"]
-            if not "wakeup" in kwargs:
+            if not "wakeup" in kwargs and prog.default_wakeup:
                 kwargs["wakeup"] = time_to_next_datetime(prog.default_wakeup)
-            if not "sleep_time" in kwargs:
+            if not "sleep_time" in kwargs and prog.default_sleep_time:
                 kwargs["sleep_time"] = prog.default_sleep_time
-            if not "window" in kwargs:
+            if not "window" in kwargs and prog.default_window:
                 kwargs["window"] = prog.default_window
+            if not "lights_action" in kwargs and prog.lights_action:
+                kwargs["lights_action"] = prog.lights_action
+            if not "wakeup_action" in kwargs and prog.wakeup_action:
+                kwargs["wakeup_action"] = prog.wakeup_action
+        if not "wakeup" in kwargs and "sleep_time" in kwargs:
+            kwargs["wakeup"] = datetime.datetime.now() + datetime.timedelta(minutes=kwargs["sleep_time"])
         return super(Session, self).__init__(*args, **kwargs)
 
 
@@ -370,6 +390,55 @@ class Session(models.Model):
         minutes, seconds = divmod(remainder, 60)
         return (hours, minutes, seconds)
 
+    def log(self, typ, msg):
+        if isinstance(typ, basestring):
+            for ti, ta in LOG_TYPES:
+                if typ.lower() == ta.lower():
+                    typ = ti
+                    break
+            else:
+                typ = LOG_INFO
+        entry = LogEntry(session=self, typ=typ, msg=msg)
+        entry.save()
+
+LOG_TYPES = (
+    ( 0, u"Unknown"),
+    ( 1, u"Wakeup"),
+    ( 2, u"Lights"),
+    ( 3, u"Info"),
+    ( 4, u"Warning"),
+    ( 5, u"Debug"),
+    ( 6, u"Error"),
+)
+
+LOG_UNKNOWN = 0
+LOG_WAKEUP = 1
+LOG_LIGHTS = 2
+LOG_INFO = 3
+LOG_WARNING = 4
+LOG_DEBUG = 5
+LOG_ERROR = 6
+
+class LogEntry(models.Model):
+    session = models.ForeignKey(Session, db_index=True, related_name="logs")
+    date = models.DateTimeField("Date", null=False, auto_now_add=True)
+    typ = models.IntegerField("Type", choices=LOG_TYPES)
+    msg = models.CharField("msg", max_length=200, blank=True, null=True)
+
+    def __unicode__(self):
+        return u"%s %s:%s" %(self.date, self.get_typ_display(), self.msg or "")
+
+    def stdout(self):
+        lvl = logging.INFO
+        if self.typ == 3:
+            lvl = logging.DEBUG
+        elif self.typ == 4:
+            lvl = logging.ERROR
+        logging.log(lvl, u"%s:%s" %(self.get_typ_display(), self.msg))
+
+    class Meta:
+        ordering = ("-date",)
+
 
 class Entry(models.Model):
     date = models.DateTimeField("Date", null=False, auto_now_add=True)
@@ -433,6 +502,7 @@ COUNTER_MASK = 31
 class DBWriter(ez_chronos.CommandDispatcher):
 
     def __init__(self, *args, **kwargs):
+        self.clock = kwargs.pop("clock", None)
         super(DBWriter, self).__init__(*args, **kwargs)
         self.last_msg = {}
         self.session = {}
@@ -476,6 +546,8 @@ class DBWriter(ez_chronos.CommandDispatcher):
 
         try:
             session = Session.objects.get_active_session(rf_id)
+            if not self.clock.has_session(session):
+                self.clock.add(session.program.get_program(session))
         except Session.DoesNotExist:
             logging.warning("Session id %s sent which is not active. Creating a new Session" %rf_id)
             user=get_user_or_default(None)
@@ -483,6 +555,8 @@ class DBWriter(ez_chronos.CommandDispatcher):
             session = Session(start=now, stop=now, rf_id=rf_id, 
                               user=user, program=program)
             session.save()
+            self.clock.add(program.get_program(session))
+
 
         logging.debug("%s S:%2d C:%2d %6d %s" %(session.id, rf_id, counter, var, "#"*max(min((var/500), 80),1)))
         entry = Entry(value=var, counter=counter, session=session)
@@ -523,7 +597,6 @@ class DBWriter(ez_chronos.CommandDispatcher):
         program_id = ord(mdata[2])
         user = get_user_or_default(device.default_user)
         program = UserProgram.objects.get_program_for_user(user, program_id)
-
 
         if not active_session:
             rf_id = Session.objects.get_new_rf_id()

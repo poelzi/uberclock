@@ -1,5 +1,8 @@
 from django.core.management.base import BaseCommand, CommandError
+
 from uberclock.db.models import DBWriter
+from uberclock.db.alarm import Clock
+
 from django.conf import settings
 import sys, thread
 from optparse import make_option
@@ -25,12 +28,20 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         logging.basicConfig(level=logging.DEBUG)
+
+        # main clock instance
+        self.clock = Clock()
+
         thread.start_new_thread(self.start_webserver, ())
+        thread.start_new_thread(self.start_clock, ())
 
         if settings.CLOCK_HARDWARE.lower() == "ezchronos":
             self.msp_ap = options['msp_ap'] or settings.EZ_SERIAL
             self.ez_chronos(*args, **options)
-    
+
+    def start_clock(self, *args, **options):
+        self.clock.run()
+
     def ez_chronos(self, *args, **options):
         while True:
             try:
@@ -40,7 +51,7 @@ class Command(BaseCommand):
                 time.sleep(5)
                 continue
 
-            pv = DBWriter(ser)
+            pv = DBWriter(ser, clock=self.clock)
             pv.debug = 1
             pv.reset()
             pv.start_ap()
@@ -64,9 +75,10 @@ class Command(BaseCommand):
                 except: pass
 
     def start_webserver(self):
+        from django.core.servers.basehttp import AdminMediaHandler
         server = wsgiserver.CherryPyWSGIServer(
             (settings.SERVER_LISTEN, settings.SERVER_PORT),
-            django.core.handlers.wsgi.WSGIHandler(),
+            AdminMediaHandler(django.core.handlers.wsgi.WSGIHandler(), ""),
             server_name='localhost',
             numthreads = 20,
         )

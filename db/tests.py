@@ -89,6 +89,19 @@ class DBTest(TestCase):
         session = Session(program=prog)
         self.assertEqual(session.sleep_time, 300)
 
+        session.save()
+        # test log
+        session.log("UNKNOWN", "test info")
+        session.log("WAKEUP", "test wakeup")
+        session.log("LIGHTS", "test lights")
+        session.log("INFO", "test info")
+        session.log("WARNING", "test warning")
+        session.log("ERROR", "test error")
+        self.assertEqual(session.logs.count(), 6)
+        session.log(123, "last")
+        self.assertEqual(session.logs.all()[0].typ, 123)
+
+
         prog.delete()
         
     def test_session_functions(self):
@@ -108,7 +121,46 @@ class DBTest(TestCase):
         session.window = 21
         self.assertEqual(session.action_in_window(alarm.ACTIONS.WAKEUP), True)
         self.assertEqual(session.action_in_window(alarm.ACTIONS.LIGHTS), True)
-        
+
+
+class ActionTest(TestCase):
+    def test_manager(self):
+        self.assertEquals(alarm.manager.get_action("execute"),
+                          alarm.ExecuteAction)
+        self.assertEquals(alarm.manager.get_action("mpd"),
+                          alarm.MpdAction)
+
+    def test_action(self):
+        ea = alarm.manager.get_action("execute")(commands=("echo", "testrun1"))
+        rv = ea.execute()
+        self.assertEqual(rv, 0)
+        ea = alarm.manager.get_action("execute")(commands=(("echo", "testrun2"),))
+        rv = ea.execute()
+        self.assertEqual(rv, 0)
+        ea = alarm.manager.get_action("execute")(commands=(("true",),("false",),("true")))
+        rv = ea.execute()
+        self.assertEqual(rv, 1)
+
+    def test_mpd(self):
+        ea = alarm.MpdAction()
+        import socket
+        try:
+            rv = ea.execute()
+        except socket.error:
+            print "skip mpd test"
+            return
+        self.assertEqual(rv, None)
+        self.assertEqual(ea.client.status()['state'], 'play')
+        ea.stop()
+
+
+class NoopAction(alarm.BaseAction):
+    name = "noop"
+    def execute(self):
+        print "noop execute"
+        self.done = True
+
+alarm.manager.register_action(NoopAction)
 
 
 class AlarmTest(TestCase):
@@ -121,11 +173,15 @@ class AlarmTest(TestCase):
         time.sleep(0.01)
         self.assertEqual(basic.check(), alarm.ACTIONS.WAKEUP)
 
+    def test_manager(self):
+        self.assertEqual(alarm.manager.get_program("simple_movement"), 
+                         alarm.MovementAlarm)
+        self.assertEqual(alarm.manager.get_program("basic"), 
+                         alarm.BasicAlarm)
+        self.assertEqual(alarm.manager.get_program("bla"), 
+                         alarm.BasicAlarm)
+        
 
-    def test_action(self):
-        ea = alarm.ExecuteAction("echo", "-n", "testrun")
-        rv = ea.execute()
-        self.assertEqual(rv[0], "testrun")
 
     def test_movement(self):
         prog = UserProgram(users_id=2)
@@ -182,8 +238,32 @@ class AlarmTest(TestCase):
             if ctime > end:
                 break
 
-            
+    def test_clock(self):
+
+        clock = alarm.Clock()
+
+        prog = UserProgram(users_id=2)
+        #prog.set_var("wakeup", datetime.time(6,30))
+        prog.default_wakeup = datetime.time(5, 00)
+        prog.default_window = 10
+        prog.set_program(alarm.manager.get_program("basic"))
+        prog.save()
+
+        session = Session(program=prog, wakeup=datetime.datetime.now() + datetime.timedelta(seconds=1))
+        session.save()
         
+        ai = prog.get_program(session)
+        clock.add(ai)
+        
+        for i in xrange(100):
+            clock.work()
+            if not len(clock):
+                break
+            time.sleep(0.10)
+        
+        # FIXME
+        self.assertEqual(len(clock), 0)
+        clock.stop()
 
 
     def test_neuro1(self):

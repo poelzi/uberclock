@@ -130,7 +130,7 @@ SERVER_PORT = 8000
 DEFAULT_USER = 'user'
 DEFAULT_ALARM = 'basic'
 
-CLOCK_SESSION_TIMEOUT = 60*5
+CLOCK_SESSION_TIMEOUT = 60*30
 
 PISTON_STREAM_OUTPUT = True
 
@@ -144,6 +144,30 @@ CHUMBY_URLS = {
   'default' : '<embed width="800" height="480" quality="high" bgcolor="#FFFFFF" wmode="transparent" name="virtualchumby" type="application/x-shockwave-flash" src="http://www.chumby.com/virtualchumby_noskin.swf" FlashVars="_chumby_profile_url=http%3A%2F%2Fwww.chumby.com%2Fxml%2Fvirtualprofiles%2FE8E34C1E-726B-11DF-BA50-001B24F07EF4&amp;baseURL=http%3A%2F%2Fwww.chumby.com" pluginspage="http://www.macromedia.com/go/getflashplayer"></embed>'
 }
 
+# execute | mdp
+
+MPD_HOST = ('localhost', 6600)
+MPD_VOLUME = 90
+
+MPD_COMMANDS = (
+    ('clear',),
+    ('add', 'alarm1.mp3'),
+)
+
+# mybe put it into a ini file ?
+COMMANDS = {
+    "wakeup":  {"type": "mpd", 
+                "host": "localhost",
+                "port": 6600,
+                "commands": MPD_COMMANDS
+               },
+    "lights":  {"type": "execute", 
+                 "commands": (("echo", "test"),),
+               },
+    "test":    {"type": "execute", 
+                "commands": (("echo", "test"),),
+               },
+}
 
 # load user config file
 if os.path.exists(os.path.join(CONFIG_PATH, "settings.py")):
