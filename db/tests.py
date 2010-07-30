@@ -249,8 +249,36 @@ class AlarmTest(TestCase):
             if ctime > end:
                 break
 
-    def test_clock(self):
 
+    def test_test_default_program(self):
+        duser = get_user_or_default(None)
+        userp = UserProgram.objects.get_program_for_user(duser, 0)
+        self.assertEqual(userp.__class__, UserProgram)
+
+        userp2 = UserProgram.objects.get_program_for_user(duser, 1)
+        self.assertNotEqual(userp, userp2)
+        userp2.default = True
+        userp2.save()
+
+        ud = UserProgram.objects.get_users_default(duser)
+        self.assertEqual(ud, userp2)
+
+
+    def test_reload(self):
+        wakeup=datetime.datetime.now() + datetime.timedelta(hours=10)
+        wakeup2 = datetime.datetime.now() + datetime.timedelta(hours=8)
+        duser = get_user_or_default(None)
+        session = Session(wakeup=wakeup)
+        session.save()
+        prog = UserProgram.objects.get_program_for_user(duser, 0)
+        aprog = prog.get_program(session)
+        self.assertEqual(aprog.session.wakeup, wakeup)
+        session.wakeup = wakeup2
+        session.save()
+        self.assertEqual(aprog.session.wakeup, wakeup2)
+        
+
+    def test_clock(self):
         clock = alarm.Clock()
 
         prog = UserProgram(users_id=2)
@@ -260,17 +288,24 @@ class AlarmTest(TestCase):
         prog.set_program(alarm.manager.get_program("basic"))
         prog.save()
 
-        session = Session(program=prog, wakeup=datetime.datetime.now() + datetime.timedelta(seconds=1))
+        session = Session(program=prog, wakeup=datetime.datetime.now() + datetime.timedelta(seconds=200))
         session.save()
-        
+
         ai = prog.get_program(session)
         clock.add(ai)
-        
+
+
+        # update wakeup to working value
+        session.wakeup=datetime.datetime.now() + datetime.timedelta(seconds=1)
+        session.save()
+
         for i in xrange(100):
             clock.work()
             if not len(clock):
                 break
             time.sleep(0.10)
+        else:
+            self.self.assertEqual(1, 0, "should have stopped. reload broken")
         
         # FIXME
         self.assertEqual(len(clock), 0)

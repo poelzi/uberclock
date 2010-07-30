@@ -63,7 +63,7 @@ class Manager(object):
         """
         rv = []
         for key,program in self.programs.iteritems():
-            rv.append((key, program))
+            rv.append((key, program.name))
         return rv
 
     def is_valid_program(self, key):
@@ -108,6 +108,8 @@ class Clock(set):
         """
         lst = list(self)
         for prog in lst:
+            # reload the cached
+            prog.reload()
             if prog.stopped:
                 self.remove(prog)
                 continue
@@ -289,6 +291,10 @@ class BaseAlarm(object):
         self.stopped = False
         self.snooze_time = kwargs.get('snooze_time', settings.DEFAULT_SNOOZE_TIME)
         self.action_name = kwargs.get('action_name', None)
+
+    def reload(self):
+        if self.session:
+            self.session = self.session.__class__.objects.get(id=self.session.id) 
 
     def check(self):
         """
