@@ -202,7 +202,7 @@ class SessionManager(models.Manager):
         return self.filter(stop__gt=start, closed=False, **kwargs)
 
     def get_new_rf_id(self):
-        id_s = range(1, (2**(RF_ID_BIT_LENGHT+1)))
+        id_s = range(1, (2**(RF_ID_BIT_LENGHT))+1)
         now = datetime.datetime.now()
         start = now - datetime.timedelta(seconds=settings.CLOCK_SESSION_TIMEOUT)
         actives = self.filter(stop__gt=start).values_list("rf_id", flat=True)
