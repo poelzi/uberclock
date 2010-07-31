@@ -169,10 +169,10 @@ class UserProgram(models.Model):
         else:
             self.alarm_key = None
 
-    def get_program(self, session):
+    def get_program(self, session, **kwargs):
         if hasattr(self, "_program") and self._program.key == self.alarm_key:
             return self._program
-        self._program = self.program_class(alarm.manager, session)
+        self._program = self.program_class(alarm.manager, session, **kwargs)
         return self._program
 
     def __unicode__(self):

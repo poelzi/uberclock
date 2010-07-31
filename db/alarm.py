@@ -4,6 +4,7 @@ Alarm clock logic
 
 from uberclock.tools import Enumeration
 from django.conf import settings
+from collections import defaultdict
 
 import datetime
 import time
@@ -81,7 +82,7 @@ class Clock(set):
     The actuall clock where alarm programs run in
     """
     def __init__(self):
-        self.actions = []
+        self.actions = defaultdict(list)
         return super(Clock, self).__init__()
 
     def add(self, obj):
@@ -108,20 +109,45 @@ class Clock(set):
         """
         lst = list(self)
         for prog in lst:
-            # reload the cached
-            prog.reload()
-            if prog.stopped:
-                self.remove(prog)
-                continue
-            res = prog.check()
-            # FIXME finish
-            if res:
-                prog.execute()
-                prog.stop()
 
-        for action in self.actions[:]:
+            # we only check not stopped programs. they may still be here
+            # because a action is still running
+            if not prog.stopped:
+                # reload the cached
+                prog.reload()
+                res = prog.check()
+                # FIXME finish
+                if res:
+                    act = prog.execute()
+                    if act:
+                        self.actions[prog].append(act)
+                    if not act.is_running:
+                        act.execute()
+
+                self._clean_prog(prog)
+
+    def _clean_prog(self, prog):
+        # check the running actions
+        for action in self.actions[prog][:]:
             if action.done:
-                self.actions.remove(action)
+                self.actions[prog].remove(action)
+            elif prog.stopped:
+                # if the program is stopped, we send a stop signal an the running actions
+                action.stop()
+
+        # if no action is running and program is stopped, we can savely remove it
+        if prog.stopped and not len(self.actions[prog]):
+            self.remove(prog)
+
+
+    def stop_all(self):
+        """
+        Stops all programs
+        """
+        for prog in list(self):
+            prog.stop()
+            self._clean_prog(prog)
+
 
     def run(self):
         """
@@ -132,10 +158,19 @@ class Clock(set):
             # sleep a tick
             time.sleep(10)
 
+    def running_actions(self):
+        res = 0
+        for acts in self.actions.itervalues():
+            for act in acts:
+                if not act.stopped:
+                    res += 1
+        return res
+
     def stop(self):
-        for action in self.actions:
-            if action.is_running:
-                action.stop()
+        """
+        Stops clock
+        """
+        self.stop_all()
 
 
 class AlarmInstance(object):
@@ -290,7 +325,12 @@ class BaseAlarm(object):
         self.next_alarm = None
         self.stopped = False
         self.snooze_time = kwargs.get('snooze_time', settings.DEFAULT_SNOOZE_TIME)
-        self.action_name = kwargs.get('action_name', None)
+        self.wakeup_action = kwargs.get('wakeup_action', None)
+        self.lights_action = kwargs.get('lights_action', None)
+        self.wakeup_action_inst = None
+        self.lights_action_inst = None
+        self.done = False
+
 
     def reload(self):
         if self.session:
@@ -308,24 +348,27 @@ class BaseAlarm(object):
         """
         if snooze_time is None:
             snooze_time = self.snooze_time
+        self.done = False
 
         self.next_alarm = datetime.datetime.now() + \
                               datetime.timedelta(seconds=snooze_time)
 
     def stop(self):
         self.next_alarm = None
+        self.done = True
         self.stopped = True
 
     def execute(self):
         """
         Creates a new ActionClass instance and returns it.
         """
-        action_name = self.action_name or (self.session and self.session.wakeup_action)
+        if self.wakeup_action_inst:
+            return self.wakeup_action_inst
+        action_name = self.wakeup_action or (self.session and self.session.wakeup_action)
         if self.session:
             self.session.log("WAKEUP", "Execute action %s" %action_name)
-        instance = create_action(action_name)
-        return instance
-
+        self.wakeup_action_inst = create_action(action_name)
+        return self.wakeup_action_inst
 
     def feed(self, entry):
         """
@@ -371,7 +414,7 @@ class MovementAlarm(BasicAlarm):
         th = self.DEFAULT_THRESHHOLDS[None]
         if self.session:
             if self.session.detector:
-                th = self.DEFAULT_THRESHHOLDS.get(session.detector.typ, None)
+                th = self.DEFAULT_THRESHHOLDS.get(self.actsession.detector.typ, None)
             if self.session.program:
                 th = self.session.program.get_var("movement_threshhold", th)
         if "threshhold" in kwargs:

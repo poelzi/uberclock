@@ -11,6 +11,34 @@ from models import *
 import alarm
 import time, datetime
 
+
+class NoopAction(alarm.BaseAction):
+    name = "noop"
+    def execute(self):
+        print "noop execute"
+        self.done = True
+
+alarm.manager.register_action(NoopAction)
+
+CLOCK_RUN = False
+
+class ClockAction(alarm.BaseAction):
+    name = "clock"
+    def execute(self):
+        global CLOCK_RUN
+        if self.is_running:
+            return
+        self.is_running = True
+        assert CLOCK_RUN == False, "Clock already run"
+        CLOCK_RUN = True
+        self.done = True
+
+alarm.manager.register_action(ClockAction)
+
+settings.COMMANDS["test_clock"] = {"type": "clock"}
+settings.COMMANDS["test_noop"] = {"type": "noop"}
+
+
 class DBTest(TestCase):
     fixtures = ['default_user.json']
 
@@ -121,6 +149,28 @@ class DBTest(TestCase):
         self.assertEqual(session.action_in_window(alarm.ACTIONS.WAKEUP), True)
         self.assertEqual(session.action_in_window(alarm.ACTIONS.LIGHTS), True)
 
+    def test_basic_alarm(self):
+        prog = UserProgram(users_id=3)
+        
+        #prog.set_var("wakeup", datetime.time(6,30))
+        prog.default_wakeup = datetime.time(3, 45)
+        prog.default_window = 29
+        prog.wakeup_action = "test_clock"
+        prog.save()
+
+        session = Session(program=prog)
+
+        now = datetime.datetime.now()
+        session.window = 15
+        session.wakeup = now + datetime.timedelta(minutes=20)
+        self.assertEqual(session.action_in_window(alarm.ACTIONS.WAKEUP), False)
+        self.assertEqual(session.action_in_window(alarm.ACTIONS.LIGHTS), True)
+        session.window = 21
+        self.assertEqual(session.action_in_window(alarm.ACTIONS.WAKEUP), True)
+        self.assertEqual(session.action_in_window(alarm.ACTIONS.LIGHTS), True)
+
+
+
     def test_user(self):
         usr = get_user_or_default(None)
         from django.contrib.auth.models import User
@@ -163,15 +213,6 @@ class ActionTest(TestCase):
         self.assertEqual(rv, None)
         self.assertEqual(ea.client.status()['state'], 'play')
         ea.stop()
-
-
-class NoopAction(alarm.BaseAction):
-    name = "noop"
-    def execute(self):
-        print "noop execute"
-        self.done = True
-
-alarm.manager.register_action(NoopAction)
 
 
 class AlarmTest(TestCase):
@@ -218,6 +259,7 @@ class AlarmTest(TestCase):
         
         ok =  session.wakeup - datetime.timedelta(minutes=session.window)
         end = now + datetime.timedelta(minutes=15)
+
         import random
         random.seed(0)
         ctime = now - datetime.timedelta(minutes=15)
@@ -248,6 +290,14 @@ class AlarmTest(TestCase):
 
             if ctime > end:
                 break
+
+        # test default time timeout
+        session.wakeup = now - datetime.timedelta(seconds=20)
+        ai = prog.get_program(session)
+        ai.threshold = 3000
+        res = ai.check(ctime)
+        self.assertEquals(res, alarm.ACTIONS.WAKEUP)
+
 
 
     def test_test_default_program(self):
@@ -285,6 +335,7 @@ class AlarmTest(TestCase):
         #prog.set_var("wakeup", datetime.time(6,30))
         prog.default_wakeup = datetime.time(5, 00)
         prog.default_window = 10
+        prog.wakeup_action = "test_clock"
         prog.set_program(alarm.manager.get_program("basic"))
         prog.save()
 
@@ -299,17 +350,26 @@ class AlarmTest(TestCase):
         session.wakeup=datetime.datetime.now() + datetime.timedelta(seconds=1)
         session.save()
 
+        run = False
         for i in xrange(100):
             clock.work()
-            if not len(clock):
+            if CLOCK_RUN:
+                clock.stop()
                 break
             time.sleep(0.10)
         else:
-            self.self.assertEqual(1, 0, "should have stopped. reload broken")
+            self.assertEqual(CLOCK_RUN, True, "Action is not run")
+            self.assertEqual(1, 0, "should have stopped. reload broken")
         
         # FIXME
         self.assertEqual(len(clock), 0)
         clock.stop()
+
+    def test_create_action(self):
+        tc = alarm.create_action("test_clock")
+        self.assertEqual(tc.__class__, ClockAction)
+        tc = alarm.create_action("test_noop")
+        self.assertEqual(tc.__class__, NoopAction)
 
 
     def test_neuro1(self):
