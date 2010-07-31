@@ -578,7 +578,7 @@ class DBWriter(ez_chronos.CommandDispatcher):
                                                             defaults={"name": "eZ430 OpenChronos",
                                                                       "ident": ident,
                                                                       "typ": DETECTOR_TYPES[0][0],
-                                                                      "user": get_user_or_default(None),
+                                                                      "default_user": get_user_or_default(None),
                                                                       })
         if created:
             device.save()
