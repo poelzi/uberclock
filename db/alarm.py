@@ -10,7 +10,6 @@ import datetime
 import time
 import logging
 
-
 ACTIONS = Enumeration("ACTIONS",
     (("LIGHTS",1), "WAKEUP"))
 
@@ -414,7 +413,7 @@ class MovementAlarm(BasicAlarm):
         th = self.DEFAULT_THRESHHOLDS[None]
         if self.session:
             if self.session.detector:
-                th = self.DEFAULT_THRESHHOLDS.get(self.actsession.detector.typ, None)
+                th = self.DEFAULT_THRESHHOLDS.get(self.session.detector.typ, None)
             if self.session.program:
                 th = self.session.program.get_var("movement_threshhold", th)
         if "threshhold" in kwargs:

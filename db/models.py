@@ -393,7 +393,7 @@ class Session(models.Model):
         minutes, seconds = divmod(remainder, 60)
         return (hours, minutes, seconds)
 
-    def log(self, typ, msg):
+    def log(self, typ, msg, stdout=True):
         if isinstance(typ, basestring):
             for ti, ta in LOG_TYPES:
                 if typ.lower() == ta.lower():
@@ -403,6 +403,8 @@ class Session(models.Model):
                 typ = LOG_INFO
         entry = LogEntry(session=self, typ=typ, msg=msg)
         entry.save()
+        if stdout:
+            entry.stdout()
 
 LOG_TYPES = (
     ( 0, u"Unknown"),
@@ -433,11 +435,24 @@ class LogEntry(models.Model):
 
     def stdout(self):
         lvl = logging.INFO
-        if self.typ == 3:
-            lvl = logging.DEBUG
+        msg = u"%s" %self.msg
+        if self.typ == 1:
+            lvl = logging.WAKEUP
+        elif self.typ == 2:
+            lvl = logging.LIGHTS
+        elif self.typ == 3:
+            lvl = logging.INFO
         elif self.typ == 4:
+            lvl = logging.WARNING
+        elif self.typ == 5:
+            lvl = logging.DEBUG
+        elif self.typ == 6:
             lvl = logging.ERROR
-        logging.log(lvl, u"%s:%s" %(self.get_typ_display(), self.msg))
+        else:
+            msg = u"%s:%s" %(self.get_typ_display(), self.msg)
+        log = logging.getLogger("session")
+        log.setLevel(logging.DEBUG)
+        log.log(lvl, u"%s" %msg)
 
     class Meta:
         ordering = ("-date",)
@@ -578,7 +593,7 @@ class DBWriter(ez_chronos.CommandDispatcher):
                                                             defaults={"name": "eZ430 OpenChronos",
                                                                       "ident": ident,
                                                                       "typ": DETECTOR_TYPES[0][0],
-                                                                      "default_user": get_user_or_default(None),
+                                                                      "user": get_user_or_default(None),
                                                                       })
         if created:
             device.save()

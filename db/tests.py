@@ -118,13 +118,15 @@ class DBTest(TestCase):
 
         session.save()
         # test log
+        logging.basicConfig(level=logging.INFO)
         session.log("UNKNOWN", "test info")
         session.log("WAKEUP", "test wakeup")
         session.log("LIGHTS", "test lights")
         session.log("INFO", "test info")
         session.log("WARNING", "test warning")
+        session.log("DEBUG", "test debug")
         session.log("ERROR", "test error")
-        self.assertEqual(session.logs.count(), 6)
+        self.assertEqual(session.logs.count(), 7)
         session.log(123, "last")
         self.assertEqual(session.logs.all()[0].typ, 123)
 
