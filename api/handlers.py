@@ -2,7 +2,7 @@ from piston.handler import BaseHandler
 from piston.doc import generate_doc
 from piston.utils import rc, require_mime, require_extended, FormValidationError
 
-from uberclock.db.models import Detector, Session, Entry, LearnData
+from uberclock.db.models import Detector, Session, Entry, LearnData, UserProgram
 from django.contrib.auth.models import User
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -51,37 +51,33 @@ class DetectorHandler(BaseHandler):
               'ident',
               ('default_user', ('id', 'username')))
 
-class DetectorListHandler(DetectorHandler):
+
+class UserProgramHandler(BaseHandler):
     allowed_methods = ('GET',)
-
-
-# SESSIONS
-class SessionListHandler(BaseHandler):
-    allowed_methods = ('GET', 'PUT', 'POST')
-    model = Session
-    fields = ('id', 
-              ('user', ('id', 'username')), 
-              'start', 'stop', 
-              ('detector', ('id', 'name')),
-              ('program', ('id',)),
-              'closed', 'new')
-
-   #fields = (re.compile('.*'),)
-
-
-
-    #include = ('id',)
-
-
-#     @staticmethod
-#     def resource_uri():
-#         return ('session_list_handler', [])
+    model = UserProgram
+    fields = ('id',
+              ('user', ('id', 'username')),
+              'users_id', 
+              'default',
+              'alarm_key',
+              'name',
+              'short_name',
+              'default_wakeup',
+              'default_sleep_time',
+              'default_window',
+              'lights_action',
+              'wakeup_action')
 
 
 class SessionHandler(BaseHandler):
     allowed_methods = ('GET', 'POST')
     model = Session
-
+    list_fields = ('id', 
+              ('user', ('id', 'username')), 
+              'start', 'stop', 
+              ('detector', ('id', 'name')),
+              ('program', ('id',)),
+              'closed', 'new')
     fields = ("id",
               "start",
               "stop",
@@ -97,6 +93,14 @@ class SessionHandler(BaseHandler):
               "new",
               "lights_action",
               "wakeup_action")
+
+    def queryset(self, request):
+        if "filter" in request.GET:
+            if request.GET["filter"] == "active":
+                return self.model.objects.get_active_sessions()
+            if request.GET["filter"] == "new":
+                return self.model.objects.get_new_sessions()
+        return self.model.objects.all()
 
     def create(self, request):
         """
@@ -115,9 +119,11 @@ class SessionHandler(BaseHandler):
             if "user" in attrs:
                 try:
                     usr = User.objects.get(id=int(attrs["user"]))
-                except ValueError, Users.DoesNotExist:
+                except (ValueError, Users.DoesNotExist), e:
                     usr = User.objects.get(username=attrs["user"])
                 args["user"] = usr
+            if "program" in attrs:
+                args["program"] = UserProgram.objects.get(id=int(attrs["program"]))
             if "detector" in attrs:
                 args["detector"] = Detector.get(id=attrs["detector"])
 

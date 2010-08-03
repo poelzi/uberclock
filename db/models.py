@@ -207,7 +207,7 @@ class SessionManager(models.Manager):
         return self.filter(stop__gt=start, closed=False, **kwargs)
 
     def get_new_sessions(self, **kwargs):
-        return self.filter(new=True, **kwargs)
+        return self.filter(new=True, closed=False, **kwargs)
 
     def get_new_rf_id(self):
         id_s = range(1, (2**(RF_ID_BIT_LENGHT)))
