@@ -125,7 +125,7 @@ CLOCK_HARDWARE = "ezchronos"
 EZ_SERIAL = "/dev/ttyACM0"
 
 SERVER_LISTEN = '0.0.0.0'
-SERVER_PORT = 8000
+SERVER_PORT = 1799
 
 DEFAULT_USER = 'user'
 DEFAULT_ALARM = 'basic'
@@ -155,6 +155,10 @@ MPD_COMMANDS = (
 )
 
 # mybe put it into a ini file ?
+# base values:
+#  type: mpd|execute (required)
+#  name: human readable name (optional)
+#  description: human description of action (optional)
 COMMANDS = {
     "wakeup":  {"type": "mpd", 
                 "host": "localhost",
@@ -189,4 +193,4 @@ try:
 except NameError:
     pass
 
-#PISTON_DISPLAY_ERRORS = DEBUG
+PISTON_DISPLAY_ERRORS = DEBUG

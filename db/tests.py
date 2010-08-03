@@ -130,6 +130,16 @@ class DBTest(TestCase):
         session.log(123, "last")
         self.assertEqual(session.logs.all()[0].typ, 123)
 
+        # test actions arguments
+        session = Session(program=prog, wakeup_action=settings.COMMANDS.keys()[0],
+                            lights_action=settings.COMMANDS.keys()[1])
+        session.save()
+        self.assertEqual(session.wakeup_action, settings.COMMANDS.keys()[0])
+        self.assertEqual(session.lights_action, settings.COMMANDS.keys()[1])
+
+        session = Session(program=prog, sleep_time='123')
+        session.save()
+        self.assertEqual(session.sleep_time, 123)
 
         prog.delete()
         

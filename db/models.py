@@ -22,12 +22,13 @@ except ImportError:
 # Create your models here.
 
 DETECTOR_TYPES = (
- (0, "OpenChronos"),
+ (0, "Unknown"),
+ (1, "OpenChronos"),
 )
 
 class ChoicesIterator(object):
     def __iter__(self):
-        return ((n,n) for n in settings.COMMANDS.iterkeys())
+        return ((unicode(n),unicode(settings.COMMANDS[n].get('name', n))) for n in settings.COMMANDS.iterkeys())
 
 ACTION_CHOICES = ChoicesIterator()
 
@@ -62,6 +63,10 @@ class Detector(models.Model):
     typ = models.IntegerField("Type", choices=DETECTOR_TYPES)
     ident = models.CharField("Identifier", null=True, max_length=100, unique=True, db_index=True)
     default_user = models.ForeignKey(User, null=True)
+
+    @property
+    def typ_display(self):
+        return self.get_typ_display()
 
     def __repr__(self):
         return '<Detector %s >' %self.ident
@@ -201,6 +206,9 @@ class SessionManager(models.Manager):
         start = now - datetime.timedelta(seconds=settings.CLOCK_SESSION_TIMEOUT)
         return self.filter(stop__gt=start, closed=False, **kwargs)
 
+    def get_new_sessions(self, **kwargs):
+        return self.filter(new=True, **kwargs)
+
     def get_new_rf_id(self):
         id_s = range(1, (2**(RF_ID_BIT_LENGHT)))
         now = datetime.datetime.now()
@@ -249,18 +257,18 @@ class Session(models.Model):
     """
     start = models.DateTimeField("Start", null=False, auto_now_add=True, editable=False)
     stop = models.DateTimeField("Stop", null=False, auto_now_add=True, editable=False)
-    user = models.ForeignKey(User, null=True)
+    user = models.ForeignKey(User, null=True, blank=True)
     detector = models.ForeignKey(Detector, null=True, blank=True)
-    program = models.ForeignKey(UserProgram, null=True)
+    program = models.ForeignKey(UserProgram, null=True, blank=True)
     wakeup = models.DateTimeField("Wakeup", null=True, blank=True)
     #FIXME messure real slept length
     sleep_time = models.IntegerField(null=True, help_text="Minutes of wanted sleep", blank=True)
-    window = models.IntegerField(null=True, help_text="Window of Minutes how many minutes before wakeup can be alarmed")
+    window = models.IntegerField(null=True, blank=True, help_text="Window of Minutes how many minutes before wakeup can be alarmed")
     rating = models.IntegerField("Rating", null=True, blank=True)
     deleted = models.BooleanField("Deleted", default=False)
-    rf_id = models.IntegerField("RF Id", null=True)
+    rf_id = models.IntegerField("RF Id", null=True, blank=True)
     closed = models.BooleanField("Session has ended", default=False)
-    new = models.BooleanField("Session has not yet run", default=False)
+    new = models.BooleanField("Session has not yet run", default=True)
 
     lights_action = models.CharField("Lights Action", max_length=30, default="lights", choices=ACTION_CHOICES)
     wakeup_action = models.CharField("Wakeup Action", max_length=30, default="wakeup", choices=ACTION_CHOICES)
@@ -270,6 +278,12 @@ class Session(models.Model):
 
     def __init__(self, *args, **kwargs):
         # copy default values from program
+        if "sleep_time" in kwargs:
+            try:
+                kwargs["sleep_time"] = int(kwargs["sleep_time"])
+            except ValueError:
+                raise ValueError, "sleep_time is not an integer"
+
         if "program" in kwargs:
             prog = kwargs["program"]
             if not "wakeup" in kwargs and prog.default_wakeup:
@@ -284,6 +298,7 @@ class Session(models.Model):
                 kwargs["wakeup_action"] = prog.wakeup_action
         if not "wakeup" in kwargs and "sleep_time" in kwargs:
             kwargs["wakeup"] = datetime.datetime.now() + datetime.timedelta(minutes=kwargs["sleep_time"])
+
         return super(Session, self).__init__(*args, **kwargs)
 
 
@@ -358,9 +373,12 @@ class Session(models.Model):
         return "<Session %s %s-%s>" %(self.user, self.start, self.stop)
 
     def __unicode__(self):
-        length = self.length
-        entries = self.entry_set.all().count()
-        return u"Session from %s %s (%s:%0.2d) (%s Entries)" %(self.user, format(self.start, settings.DATETIME_FORMAT), length[0], length[1], entries)
+        if self.pk and self.start and self.stop:
+            length = self.length
+            entries = self.entry_set.all().count()
+            return u"Session from %s %s (%s:%0.2d) (%s Entries)" %(self.user, format(self.start, settings.DATETIME_FORMAT), length[0], length[1], entries)
+        else:
+            return u"Session from %s" %(self.user)
 
     def merge(self, source):
         # FIXME: add a zero datapoint if the time between entries is to long
@@ -388,7 +406,10 @@ class Session(models.Model):
     def length(self):
         if self.start > self.stop:
             return (0, 0, 0)
-        s = (self.stop - self.start).seconds
+        try:
+            s = (self.stop - self.start).seconds
+        except TypeError:
+            return (0, 0, 0)
         hours, remainder = divmod(s, 3600)
         minutes, seconds = divmod(remainder, 60)
         return (hours, minutes, seconds)
@@ -469,7 +490,7 @@ class Entry(models.Model):
         # update the session new flag to false if any entry is saved to it.
         # it is used then
         if self.session and self.session.new:
-            self.session = False
+            self.session.new = False
             self.session.save()
 
     def __repr__(self):
@@ -592,7 +613,7 @@ class DBWriter(ez_chronos.CommandDispatcher):
         device, created = Detector.objects.get_or_create(ident=ident, 
                                                             defaults={"name": "eZ430 OpenChronos",
                                                                       "ident": ident,
-                                                                      "typ": DETECTOR_TYPES[0][0],
+                                                                      "typ": DETECTOR_TYPES[1][0],
                                                                       "user": get_user_or_default(None),
                                                                       })
         if created:
