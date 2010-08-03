@@ -1,6 +1,7 @@
 import inspect, handler
 
 from piston.handler import typemapper
+from piston.handler import handler_tracker
 
 from django.core.urlresolvers import get_resolver, get_callable, get_script_prefix
 from django.shortcuts import render_to_response
@@ -12,7 +13,7 @@ def generate_doc(handler_cls):
     for the given handler. Use this to generate
     documentation for your API.
     """
-    if not type(handler_cls) is handler.HandlerMetaClass:
+    if isinstance(type(handler_cls), handler.HandlerMetaClass):
         raise ValueError("Give me handler, not %s" % type(handler_cls))
         
     return HandlerDocumentation(handler_cls)
@@ -36,7 +37,8 @@ class HandlerMethod(object):
             else:
                 yield (arg, None)
         
-    def get_signature(self, parse_optional=True):
+    @property
+    def signature(self, parse_optional=True):
         spec = ""
 
         for argn, argdef in self.iter_args():
@@ -53,18 +55,25 @@ class HandlerMethod(object):
             return spec.replace("=None", "=<optional>")
             
         return spec
-
-    signature = property(get_signature)
         
-    def get_doc(self):
+    @property
+    def doc(self):
         return inspect.getdoc(self.method)
     
-    doc = property(get_doc)
-    
-    def get_name(self):
+    @property
+    def name(self):
         return self.method.__name__
-        
-    name = property(get_name)
+    
+    @property
+    def http_name(self):
+        if self.name == 'read':
+            return 'GET'
+        elif self.name == 'create':
+            return 'POST'
+        elif self.name == 'delete':
+            return 'DELETE'
+        elif self.name == 'update':
+            return 'PUT'
     
     def __repr__(self):
         return "<Method: %s>" % self.name
@@ -75,8 +84,12 @@ class HandlerDocumentation(object):
         
     def get_methods(self, include_default=False):
         for method in "read create update delete".split():
-            met = getattr(self.handler, method)
-            stale = inspect.getmodule(met) is handler
+            met = getattr(self.handler, method, None)
+
+            if not met:
+                continue
+                
+            stale = inspect.getmodule(met.im_func) is not inspect.getmodule(self.handler)
 
             if not self.handler.is_anonymous:
                 if met and (not stale or include_default):
@@ -92,16 +105,24 @@ class HandlerDocumentation(object):
         
     @property
     def is_anonymous(self):
-        return handler.is_anonymous
+        return self.handler.is_anonymous
 
     def get_model(self):
         return getattr(self, 'model', None)
             
-    def get_doc(self):
+    @property
+    def has_anonymous(self):
+        return self.handler.anonymous
+            
+    @property
+    def anonymous(self):
+        if self.has_anonymous:
+            return HandlerDocumentation(self.handler.anonymous)
+            
+    @property
+    def doc(self):
         return self.handler.__doc__
     
-    doc = property(get_doc)
-
     @property
     def name(self):
         return self.handler.__name__
@@ -159,8 +180,16 @@ def documentation_view(request):
     """
     docs = [ ]
 
-    for handler, (model, anonymous) in typemapper.iteritems():
+    for handler in handler_tracker: 
         docs.append(generate_doc(handler))
-        
+
+    def _compare(doc1, doc2): 
+       #handlers and their anonymous counterparts are put next to each other.
+       name1 = doc1.name.replace("Anonymous", "")
+       name2 = doc2.name.replace("Anonymous", "")
+       return cmp(name1, name2)    
+ 
+    docs.sort(_compare)
+       
     return render_to_response('documentation.html', 
         { 'docs': docs }, RequestContext(request))

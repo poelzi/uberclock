@@ -1,21 +1,28 @@
-import urllib
+import urllib, time, urlparse
+
+# Django imports
+from django.db.models.signals import post_save, post_delete
 from django.db import models
 from django.contrib.auth.models import User
-from django.contrib import admin
-from django.conf import settings
 from django.core.mail import send_mail, mail_admins
-from django.template import loader
 
+# Piston imports
 from managers import TokenManager, ConsumerManager, ResourceManager
+from signals import consumer_post_save, consumer_post_delete
 
 KEY_SIZE = 18
 SECRET_SIZE = 32
+VERIFIER_SIZE = 10
 
 CONSUMER_STATES = (
-    ('pending', 'Pending approval'),
+    ('pending', 'Pending'),
     ('accepted', 'Accepted'),
     ('canceled', 'Canceled'),
+    ('rejected', 'Rejected')
 )
+
+def generate_random(length=SECRET_SIZE):
+    return User.objects.make_random_password(length=length)
 
 class Nonce(models.Model):
     token_key = models.CharField(max_length=KEY_SIZE)
@@ -25,19 +32,6 @@ class Nonce(models.Model):
     def __unicode__(self):
         return u"Nonce %s for %s" % (self.key, self.consumer_key)
 
-admin.site.register(Nonce)
-
-class Resource(models.Model):
-    name = models.CharField(max_length=255)
-    url = models.TextField(max_length=2047)
-    is_readonly = models.BooleanField(default=True)
-    
-    objects = ResourceManager()
-
-    def __unicode__(self):
-        return u"Resource %s with url %s" % (self.name, self.url)
-
-admin.site.register(Resource)
 
 class Consumer(models.Model):
     name = models.CharField(max_length=255)
@@ -55,54 +49,26 @@ class Consumer(models.Model):
         return u"Consumer %s with key %s" % (self.name, self.key)
 
     def generate_random_codes(self):
-        key = User.objects.make_random_password(length=KEY_SIZE)
+        """
+        Used to generate random key/secret pairings. Use this after you've
+        added the other data in place of save(). 
 
-        secret = User.objects.make_random_password(length=SECRET_SIZE)
+        c = Consumer()
+        c.name = "My consumer" 
+        c.description = "An app that makes ponies from the API."
+        c.user = some_user_object
+        c.generate_random_codes()
+        """
+        key = User.objects.make_random_password(length=KEY_SIZE)
+        secret = generate_random(SECRET_SIZE)
 
         while Consumer.objects.filter(key__exact=key, secret__exact=secret).count():
-            secret = User.objects.make_random_password(length=SECRET_SIZE)
+            secret = generate_random(SECRET_SIZE)
 
         self.key = key
         self.secret = secret
         self.save()
 
-    # -- 
-    
-    def save(self, **kwargs):
-        super(Consumer, self).save(**kwargs)
-        
-        if self.id and self.user:
-            subject = "API Consumer"
-            rcpt = [ self.user.email, ]
-
-            if self.status == "accepted":
-                template = "api/mails/consumer_accepted.txt"
-                subject += " was accepted!"
-            elif self.status == "canceled":
-                template = "api/mails/consumer_canceled.txt"
-                subject += " has been canceled"
-            else:
-                template = "api/mails/consumer_pending.txt"
-                subject += " application received"
-                
-                for admin in settings.ADMINS:
-                    bcc.append(admin[1])
-
-            body = loader.render_to_string(template, 
-                    { 'consumer': self, 'user': self.user })
-                    
-            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, 
-                        rcpt, fail_silently=True)
-            
-            if self.status == 'pending':
-                mail_admins(subject, body, fail_silently=True)
-                        
-            if settings.DEBUG:
-                print "Mail being sent, to=%s" % rcpt
-                print "Subject: %s" % subject
-                print body
-
-admin.site.register(Consumer)
 
 class Token(models.Model):
     REQUEST = 1
@@ -111,12 +77,16 @@ class Token(models.Model):
     
     key = models.CharField(max_length=KEY_SIZE)
     secret = models.CharField(max_length=SECRET_SIZE)
+    verifier = models.CharField(max_length=VERIFIER_SIZE)
     token_type = models.IntegerField(choices=TOKEN_TYPES)
-    timestamp = models.IntegerField()
+    timestamp = models.IntegerField(default=long(time.time()))
     is_approved = models.BooleanField(default=False)
     
     user = models.ForeignKey(User, null=True, blank=True, related_name='tokens')
     consumer = models.ForeignKey(Consumer)
+    
+    callback = models.CharField(max_length=255, null=True, blank=True)
+    callback_confirmed = models.BooleanField(default=False)
     
     objects = TokenManager()
     
@@ -126,21 +96,51 @@ class Token(models.Model):
     def to_string(self, only_key=False):
         token_dict = {
             'oauth_token': self.key, 
-            'oauth_token_secret': self.secret
+            'oauth_token_secret': self.secret,
+            'oauth_callback_confirmed': 'true',
         }
+
+        if self.verifier:
+            token_dict.update({ 'oauth_verifier': self.verifier })
+
         if only_key:
             del token_dict['oauth_token_secret']
+
         return urllib.urlencode(token_dict)
 
     def generate_random_codes(self):
         key = User.objects.make_random_password(length=KEY_SIZE)
-        secret = User.objects.make_random_password(length=SECRET_SIZE)
+        secret = generate_random(SECRET_SIZE)
 
         while Token.objects.filter(key__exact=key, secret__exact=secret).count():
-            secret = User.objects.make_random_password(length=SECRET_SIZE)
+            secret = generate_random(SECRET_SIZE)
 
         self.key = key
         self.secret = secret
         self.save()
         
-admin.site.register(Token)
+    # -- OAuth 1.0a stuff
+
+    def get_callback_url(self):
+        if self.callback and self.verifier:
+            # Append the oauth_verifier.
+            parts = urlparse.urlparse(self.callback)
+            scheme, netloc, path, params, query, fragment = parts[:6]
+            if query:
+                query = '%s&oauth_verifier=%s' % (query, self.verifier)
+            else:
+                query = 'oauth_verifier=%s' % self.verifier
+            return urlparse.urlunparse((scheme, netloc, path, params,
+                query, fragment))
+        return self.callback
+    
+    def set_callback(self, callback):
+        if callback != "oob": # out of band, says "we can't do this!"
+            self.callback = callback
+            self.callback_confirmed = True
+            self.save()
+
+
+# Attach our signals
+post_save.connect(consumer_post_save, sender=Consumer)
+post_delete.connect(consumer_post_delete, sender=Consumer)
